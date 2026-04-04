@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+/* html5-qrcode video styling */
+#qr-reader video {
+  width: 100% !important;
+  border-radius: 0.75rem;
+}
+
+#qr-reader__scan_region {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+#qr-reader__dashboard {
+  display: none !important;
+}

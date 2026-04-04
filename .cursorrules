@@ -1,0 +1,23 @@
+# THÔNG TIN DỰ ÁN: TENBAI AUTOMATION APP
+Dự án này sử dụng mô hình Client-Server chia tách rõ ràng:
+- Frontend: Next.js (PWA), React, TailwindCSS, shadcn/ui.
+- Backend: Node.js (Express), Playwright Stealth, Supabase.
+- Giao tiếp: Frontend gọi API qua cổng Ngrok (Localhost Tunnel).
+
+# LUẬT VIẾT CODE FRONTEND (VERCEL/NEXT.JS)
+1. Ưu tiên viết Functional Components và React Hooks.
+2. Thiết kế giao diện Mobile-First (hiển thị mượt trên iPhone trước, PC sau) do đây là PWA.
+3. KHI GỌI API ĐẾN BACKEND: BẮT BUỘC phải đính kèm header `'ngrok-skip-browser-warning': 'true'` vào mọi request (fetch/axios). Nếu không app sẽ sập do Ngrok chặn.
+4. Luôn có trạng thái Loading/Error UI rõ ràng cho người dùng.
+
+# LUẬT VIẾT CODE BACKEND (LOCAL NODE.JS & PLAYWRIGHT)
+1. XỬ LÝ ANTI-BOT: Tuyệt đối không dùng Playwright/Puppeteer thường. BẮT BUỘC phải import và sử dụng `playwright-extra` + `puppeteer-extra-plugin-stealth`.
+2. TƯƠNG TÁC DOM (QUAN TRỌNG): 
+   - Không dùng `page.evaluate()` để set value cho các form React/Vue (như Outlook, 1-chome).
+   - Ưu tiên hàm Native (`.fill()`, `.selectOption()`).
+   - Nếu form chặn gắt, dùng cơ chế giả lập bàn phím: `click()` -> `type()` -> `press('Enter')`.
+3. QUẢN LÝ BỘ NHỚ (MEMORY LEAK):
+   - Mọi script Playwright phải nằm trong khối `try...catch`.
+   - Phải có logic lưu trữ `activeBrowsers` (VD: dùng Map). 
+   - Khi chạy xong, hoặc khi có lỗi, hoặc khi User gửi lệnh STOP: BẮT BUỘC gọi `await browser.close()` để dọn dẹp RAM, không để lại Zombie Process.
+4. TÍNH BẢO MẬT CORS: Server Express phải được setup CORS cho phép mọi Origin (hoặc URL Vercel) và cho phép header `ngrok-skip-browser-warning`.
