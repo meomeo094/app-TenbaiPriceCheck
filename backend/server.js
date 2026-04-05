@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 const { chromium } = require("playwright-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 
@@ -36,10 +38,50 @@ app.use(express.json());
 const activeBrowsers = new Map();
 
 // =========================================
+// Search Stats — lưu vào search_stats.json
+// =========================================
+const STATS_FILE = path.join(__dirname, "search_stats.json");
+
+function loadStats() {
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      return JSON.parse(fs.readFileSync(STATS_FILE, "utf8"));
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveStats(stats) {
+  try {
+    fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), "utf8");
+  } catch { /* ignore */ }
+}
+
+function recordSearch(jan, productName) {
+  const stats = loadStats();
+  if (!stats[jan]) stats[jan] = { count: 0, name: null };
+  stats[jan].count += 1;
+  if (productName && !stats[jan].name) stats[jan].name = productName;
+  saveStats(stats);
+}
+
+// =========================================
 // Health Check — GET /
 // =========================================
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "PriceCheck Backend đang chạy", timestamp: new Date().toISOString() });
+});
+
+// =========================================
+// Top Searches — GET /api/top-searches
+// =========================================
+app.get("/api/top-searches", (req, res) => {
+  const stats = loadStats();
+  const top = Object.entries(stats)
+    .sort(([, a], [, b]) => b.count - a.count)
+    .slice(0, 10)
+    .map(([jan, data]) => ({ jan, name: data.name, count: data.count }));
+  res.json({ results: top });
 });
 
 // =========================================
@@ -105,6 +147,10 @@ app.get("/api/check", async (req, res) => {
       console.log(`  [${r.site}] ${r.status} → ${r.price ? "¥" + parseInt(r.price).toLocaleString() : "N/A"}`);
     });
 
+    // Ghi nhận lượt tìm kiếm vào stats
+    const firstName = results.find((r) => r.name)?.name ?? null;
+    recordSearch(janCode, firstName);
+
     return res.json({ jan: janCode, results, timestamp: new Date().toISOString() });
   } catch (err) {
     console.error("[ERROR]", err.message);
@@ -148,5 +194,6 @@ app.listen(PORT, () => {
   console.log("📍 Backend đang đợi tại: GET /api/check");
   console.log(`🚀 PriceCheck Backend chạy tại http://localhost:${PORT}`);
   console.log(`📋 Gọi: GET http://localhost:${PORT}/api/check?jan=4902370553024`);
+  console.log(`📊 Top: GET http://localhost:${PORT}/api/top-searches`);
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
 });

@@ -1,21 +1,21 @@
 import { PriceResult } from "../lib/api";
 
 const SITE_ICONS: Record<string, string> = {
-  GameKaitori: "🎮",
+  Wiki: "🎮",
   "1-chome": "📦",
   Homura: "🔥",
   MoriMori: "🌲",
 };
 
 const SITE_COLORS: Record<string, string> = {
-  GameKaitori: "from-violet-600/20 to-purple-600/10 border-violet-500/30",
+  Wiki: "from-violet-600/20 to-purple-600/10 border-violet-500/30",
   "1-chome": "from-blue-600/20 to-cyan-600/10 border-blue-500/30",
   Homura: "from-orange-600/20 to-amber-600/10 border-orange-500/30",
   MoriMori: "from-emerald-600/20 to-teal-600/10 border-emerald-500/30",
 };
 
 const BADGE_COLORS: Record<string, string> = {
-  GameKaitori: "bg-violet-500/20 text-violet-300",
+  Wiki: "bg-violet-500/20 text-violet-300",
   "1-chome": "bg-blue-500/20 text-blue-300",
   Homura: "bg-orange-500/20 text-orange-300",
   MoriMori: "bg-emerald-500/20 text-emerald-300",
@@ -57,7 +57,6 @@ export default function PriceCard({ result, rank }: PriceCardProps) {
               {result.site}
             </span>
 
-            {/* Tên sản phẩm */}
             {result.name && (
               <p className="text-slate-300 text-xs leading-snug mb-1 line-clamp-2">
                 {result.name}

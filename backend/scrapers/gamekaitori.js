@@ -13,7 +13,7 @@
  *   - condition block text  → "未開封：197,500 円" (fallback)
  */
 
-const SITE_NAME  = "GameKaitori";
+const SITE_NAME  = "Wiki";
 const GK_BASE    = "https://gamekaitori.jp";
 const IPH_BASE   = "https://iphonekaitori.tokyo";
 

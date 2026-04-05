@@ -6,6 +6,7 @@ import { checkPrice, CheckPriceResponse, PriceResult } from "./lib/api";
 import PriceCard from "./components/PriceCard";
 import LoadingSkeleton from "./components/LoadingSkeleton";
 import HistoryPanel from "./components/HistoryPanel";
+import TrendingBadges from "./components/TrendingBadges";
 import { useHistory } from "./hooks/useHistory";
 
 const JanScanner = dynamic(() => import("./components/JanScanner"), {
@@ -90,6 +91,12 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleTrendingSelect = (jan: string) => {
+    setJanCode(jan);
+    handleSearch(jan);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const sortedResults = results?.results
     ? [...results.results].sort((a, b) => {
         const priceA = a.price ? parseInt(a.price.replace(/[^0-9]/g, ""), 10) : -1;
@@ -152,6 +159,9 @@ export default function Home() {
               </button>
             )}
           </div>
+
+          {/* Trending badges — hiện ngay dưới input */}
+          <TrendingBadges onSelect={handleTrendingSelect} />
 
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -255,7 +265,7 @@ export default function Home() {
             <div className="text-6xl mb-4">📱</div>
             <p className="text-slate-400 text-base font-medium">Nhập hoặc quét mã JAN</p>
             <p className="text-slate-600 text-sm mt-2">
-              So sánh giá thu mua từ 4 hệ thống: GameKaitori, 1-chome, Homura, MoriMori
+              So sánh giá thu mua từ 4 hệ thống: Wiki, 1-chome, Homura, MoriMori
             </p>
           </div>
         )}

@@ -12,20 +12,22 @@ export interface CheckPriceResponse {
   timestamp: string;
 }
 
+export interface TopSearch {
+  jan: string;
+  name: string | null;
+  count: number;
+}
+
 export const API_REQUEST_HEADERS: HeadersInit = {
   Accept: "application/json",
   "ngrok-skip-browser-warning": "true",
 };
 
-/**
- * Tất cả request đều gọi same-origin /api/check (Next.js proxy → Express).
- * Không ghép BASE_URL vào client — tránh thừa /api, sai origin, biến env không embed.
- */
+/** fetch same-origin path (or absolute URL). Luôn kèm Ngrok header. */
 export async function apiFetch(
   path: string,
   init?: Omit<RequestInit, "headers"> & { headers?: HeadersInit }
 ): Promise<Response> {
-  // same-origin: dùng path tuyệt đối (bắt đầu /) hoặc URL đầy đủ
   const finalUrl = path.startsWith("http")
     ? path
     : path.startsWith("/")
@@ -44,7 +46,6 @@ export async function apiFetch(
 }
 
 export async function checkPrice(janCode: string): Promise<CheckPriceResponse> {
-  // Gọi same-origin /api/check — Next.js proxy xử lý, không cần BASE_URL
   const path = `/api/check?jan=${encodeURIComponent(janCode)}`;
   const response = await apiFetch(path, { method: "GET" });
 
@@ -56,13 +57,25 @@ export async function checkPrice(janCode: string): Promise<CheckPriceResponse> {
   return response.json() as Promise<CheckPriceResponse>;
 }
 
+export async function getTopSearches(): Promise<TopSearch[]> {
+  try {
+    const response = await apiFetch("/api/top-searches", { method: "GET" });
+    if (!response.ok) return [];
+    const data = await response.json() as { results: TopSearch[] };
+    return data.results ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /*
- * Self-check: so sánh route backend vs frontend
- * Backend  server.js : app.get("/api/check", ...)       → Express route
- * Frontend route.ts  : target = backendBase() + "/api/check" + search
- * Frontend api.ts    : path   = "/api/check?jan=..."
- * → 3 chuỗi đều kết thúc tại /api/check — KHỚP 100%
+ * Self-check: route khớp 100%
+ * Backend  server.js     : app.get("/api/check", ...)
+ * Proxy    route.ts      : backendOrigin() + "/api/check" + search
+ * Frontend api.ts        : "/api/check?jan=..."
+ * Top      route.ts      : backendOrigin() + "/api/top-searches"
  *
- * Test nhanh từ DevTools Console (tại trang app):
+ * Test nhanh từ DevTools:
  *   fetch("/api/check?jan=4902370553024").then(r=>r.json()).then(console.log)
+ *   fetch("/api/top-searches").then(r=>r.json()).then(console.log)
  */
