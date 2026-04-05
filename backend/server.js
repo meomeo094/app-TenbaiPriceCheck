@@ -5,7 +5,8 @@ const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 
 const { scrapeGameKaitori } = require("./scrapers/gamekaitori");
 const { scrapeIchome } = require("./scrapers/ichome");
-const { scrapeKaitoriShouten } = require("./scrapers/kaitorishouten");
+const { scrapeHomura } = require("./scrapers/homura");
+const { scrapeMoriMori } = require("./scrapers/morimori");
 
 // Kích hoạt Stealth Plugin - BẮT BUỘC để qua Cloudflare/anti-bot
 chromium.use(StealthPlugin());
@@ -14,18 +15,25 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // =========================================
-// CORS: Cho phép mọi origin (Vercel, Ngrok, localhost)
+// CORS: origin * + cho phép header Ngrok (preflight từ browser)
 // =========================================
 app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "ngrok-skip-browser-warning", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Accept",
+      "ngrok-skip-browser-warning",
+      "Authorization",
+    ],
+    exposedHeaders: ["Content-Type"],
   })
 );
 
 app.use(express.json());
 
+// --- Routes (CORS middleware ở trên cùng, trước mọi route) ---
 // Lưu trữ browser instances để tránh memory leak
 const activeBrowsers = new Map();
 
@@ -88,7 +96,8 @@ app.get("/api/check-price", async (req, res) => {
     // -------------------------------------------------------
     // Chạy song song 3 scrapers với Promise.all
     // -------------------------------------------------------
-    const [page1, page2, page3] = await Promise.all([
+    const [page1, page2, page3, page4] = await Promise.all([
+      context.newPage(),
       context.newPage(),
       context.newPage(),
       context.newPage(),
@@ -96,13 +105,14 @@ app.get("/api/check-price", async (req, res) => {
 
     console.log(`  → Đang cào song song 3 trang...`);
 
-    const [gameKaitoriResult, ichomeResult, kaitoriShoutenResult] = await Promise.all([
+    const [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult] = await Promise.all([
       scrapeGameKaitori(page1, janCode),
       scrapeIchome(page2, janCode),
-      scrapeKaitoriShouten(page3, janCode),
+      scrapeHomura(page3, janCode),
+      scrapeMoriMori(page4, janCode),
     ]);
 
-    const results = [gameKaitoriResult, ichomeResult, kaitoriShoutenResult];
+    const results = [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult];
 
     // Log kết quả
     results.forEach((r) => {
@@ -135,6 +145,11 @@ app.get("/api/check-price", async (req, res) => {
       activeBrowsers.delete(browserId);
     }
   }
+});
+
+// 404 — JSON chuẩn (sau mọi route)
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found" });
 });
 
 // =========================================
