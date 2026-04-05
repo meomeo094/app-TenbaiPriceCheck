@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+function backendOrigin(): string {
+  const raw =
+    process.env.BACKEND_URL?.trim() ||
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    "http://127.0.0.1:3001";
+  try {
+    const u = new URL(raw.startsWith("http") ? raw : `http://${raw}`);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return raw.replace(/\/+$/, "").replace(/\/api(\/.*)?$/i, "");
+  }
+}
+
+const PROXY_HEADERS = {
+  Accept: "application/json",
+  "ngrok-skip-browser-warning": "true",
+} as const;
+
+export async function GET() {
+  const target = `${backendOrigin()}/api/diagnostics`;
+  try {
+    const upstream = await fetch(target, {
+      headers: { ...PROXY_HEADERS },
+      cache: "no-store",
+    });
+    const body = await upstream.text();
+    return new NextResponse(body, {
+      status: upstream.status,
+      headers: { "Content-Type": upstream.headers.get("Content-Type") ?? "application/json" },
+    });
+  } catch (err) {
+    console.error("[proxy diagnostics GET]", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        timestamp: new Date().toISOString(),
+        supabase: { ok: false, detail: "Không kết nối backend" },
+        vapid: { ok: false, detail: "—" },
+        playwright: { ok: false, detail: "—" },
+      },
+      { status: 502 }
+    );
+  }
+}

@@ -153,6 +153,43 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return out;
 }
 
+export interface DiagnosticsResponse {
+  ok: boolean;
+  timestamp: string;
+  supabase: { ok: boolean; detail?: string };
+  vapid: { ok: boolean; detail?: string };
+  playwright: { ok: boolean; detail?: string };
+}
+
+export async function fetchDiagnostics(): Promise<DiagnosticsResponse> {
+  const response = await apiFetch("/api/diagnostics", { method: "GET" });
+  const data = (await response.json().catch(() => null)) as DiagnosticsResponse | null;
+  if (!response.ok || !data || typeof data.ok !== "boolean") {
+    throw new Error("Không đọc được diagnostics");
+  }
+  return data;
+}
+
+export interface TestPushResponse {
+  ok: boolean;
+  detail?: string;
+  sent?: number;
+  failed?: number;
+}
+
+export async function postDiagnosticsTestPush(): Promise<TestPushResponse> {
+  const response = await apiFetch("/api/diagnostics/test-push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const data = (await response.json().catch(() => ({}))) as TestPushResponse;
+  if (!response.ok && data.detail == null && data.ok == null) {
+    throw new Error(`Lỗi ${response.status}`);
+  }
+  return { ok: Boolean(data.ok), detail: data.detail, sent: data.sent, failed: data.failed };
+}
+
 /*
  * Self-check: route khớp 100%
  * Backend  server.js     : app.get("/api/check", ...)

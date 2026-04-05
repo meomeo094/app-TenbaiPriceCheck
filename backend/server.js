@@ -13,6 +13,7 @@ const { scrapeHomura } = require("./scrapers/homura");
 const { scrapeMoriMori } = require("./scrapers/morimori");
 const monitorRoutes = require("./routes/monitor");
 const pushRoutes = require("./routes/push");
+const testRoutes = require("./routes/test");
 const { verifySupabaseConnection } = require("./lib/supabase");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
@@ -42,6 +43,7 @@ app.use(express.json());
 // =========================================
 app.use("/api/monitors", monitorRoutes);
 app.use("/api/push", pushRoutes);
+app.use("/api/diagnostics", testRoutes);
 
 // Lưu browser instances để cleanup
 const activeBrowsers = new Map();
@@ -216,6 +218,7 @@ app.listen(PORT, async () => {
   console.log(`📋 Gọi: GET http://localhost:${PORT}/api/check?jan=4902370553024`);
   console.log(`📊 Top: GET http://localhost:${PORT}/api/top-searches`);
   console.log(`📌 Monitors: GET|POST http://localhost:${PORT}/api/monitors`);
+  console.log(`🔧 Diagnostics: GET http://localhost:${PORT}/api/diagnostics`);
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
   await verifySupabaseConnection();
   if (process.env.DISABLE_PRICE_SCANNER !== "1") {

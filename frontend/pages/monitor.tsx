@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import PushSetup from "@/components/PushSetup";
+import SystemCheck from "@/components/SystemCheck";
 import {
   createMonitor,
   listMonitors,
@@ -92,6 +93,7 @@ export default function MonitorPage() {
       </header>
 
       <div className="flex-1 w-full max-w-lg mx-auto px-4 pt-5 space-y-5">
+        <SystemCheck />
         <PushSetup />
 
         <form onSubmit={onSubmit} className="space-y-4">
