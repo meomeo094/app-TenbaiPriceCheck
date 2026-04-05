@@ -121,7 +121,7 @@ export async function fetchVapidPublicKey(): Promise<{
   publicKey?: string;
   error?: string;
 }> {
-  const response = await apiFetch("/api/push/vapid-public", { method: "GET" });
+  const response = await apiFetch("/api/push/vapid-public-key", { method: "GET" });
   return response.json() as Promise<{
     configured: boolean;
     publicKey?: string;

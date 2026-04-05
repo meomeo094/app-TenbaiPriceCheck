@@ -17,7 +17,7 @@ function backendOrigin(): string {
 }
 
 export async function GET() {
-  const target = `${backendOrigin()}/api/push/vapid-public`;
+  const target = `${backendOrigin()}/api/push/vapid-public-key`;
   try {
     const upstream = await fetch(target, {
       headers: {

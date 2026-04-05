@@ -1,57 +1,51 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
+const pushService = require("../services/pushService");
 
 const router = express.Router();
-const SUBS_FILE = path.join(__dirname, "..", "push_subscriptions.json");
 
-function readSubs() {
+function sendVapidPublic(req, res) {
   try {
-    if (fs.existsSync(SUBS_FILE)) {
-      return JSON.parse(fs.readFileSync(SUBS_FILE, "utf8"));
-    }
+    return res.json(pushService.getPublicVapidJsonResponse());
   } catch (e) {
-    console.error("[push] Không đọc được push_subscriptions.json:", e.message);
-  }
-  return [];
-}
-
-function writeSubs(list) {
-  try {
-    fs.writeFileSync(SUBS_FILE, JSON.stringify(list, null, 2), "utf8");
-  } catch (e) {
-    console.error("[push] Không ghi được push_subscriptions.json:", e.message);
-    throw e;
+    return res.status(500).json({ error: "Lỗi VAPID", detail: String(e.message) });
   }
 }
 
 /** GET /api/push/vapid-public */
-router.get("/vapid-public", (req, res) => {
-  const publicKey = (process.env.VAPID_PUBLIC_KEY || "").trim();
-  if (!publicKey) {
-    return res.json({
-      configured: false,
-      error: "Chưa cấu hình VAPID_PUBLIC_KEY trong .env (backend).",
-    });
-  }
-  return res.json({ configured: true, publicKey });
-});
+router.get("/vapid-public", sendVapidPublic);
 
-/** POST /api/push/subscribe — body: { subscription: PushSubscription JSON } */
-router.post("/subscribe", (req, res) => {
-  const subscription = req.body?.subscription;
-  if (!subscription || typeof subscription.endpoint !== "string") {
-    return res.status(400).json({ error: "Thiếu subscription.endpoint" });
-  }
+/** GET /api/push/vapid-public-key — cùng payload JSON cho Frontend */
+router.get("/vapid-public-key", sendVapidPublic);
 
+async function handleSubscribe(req, res) {
   try {
-    const list = readSubs().filter((s) => s.endpoint !== subscription.endpoint);
-    list.push(subscription);
-    writeSubs(list);
-    return res.status(201).json({ ok: true, stored: list.length });
-  } catch {
+    const subscription = req.body?.subscription;
+    if (!subscription || typeof subscription.endpoint !== "string") {
+      return res.status(400).json({ error: "Thiếu subscription.endpoint" });
+    }
+
+    const result = await pushService.saveSubscription(subscription);
+    let count = 0;
+    try {
+      const all = await pushService.listSubscriptionsForWebPush();
+      count = all.length;
+    } catch {
+      count = 0;
+    }
+
+    return res.status(201).json({
+      ok: true,
+      stored: count,
+      storage: result.storage,
+    });
+  } catch (e) {
+    console.error("[push] subscribe:", e.message);
     return res.status(500).json({ error: "Không lưu được subscription" });
   }
-});
+}
+
+/** POST /api/push/subscribe */
+router.post("/subscribe", handleSubscribe);
 
 module.exports = router;
+module.exports.handleSubscribe = handleSubscribe;

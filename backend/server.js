@@ -1,6 +1,10 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
+const pushService = require("./services/pushService");
+pushService.ensureVapidKeysInEnvFile();
+pushService.configureWebPush();
+
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
@@ -13,6 +17,7 @@ const { scrapeHomura } = require("./scrapers/homura");
 const { scrapeMoriMori } = require("./scrapers/morimori");
 const monitorRoutes = require("./routes/monitor");
 const pushRoutes = require("./routes/push");
+const pushSubscribeHandler = pushRoutes.handleSubscribe;
 const testRoutes = require("./routes/test");
 const { verifySupabaseConnection } = require("./lib/supabase");
 
@@ -43,6 +48,8 @@ app.use(express.json());
 // =========================================
 app.use("/api/monitors", monitorRoutes);
 app.use("/api/push", pushRoutes);
+/** POST /api/subscribe — cùng handler với /api/push/subscribe (PWA / iPhone) */
+app.post("/api/subscribe", pushSubscribeHandler);
 app.use("/api/diagnostics", testRoutes);
 
 // Lưu browser instances để cleanup

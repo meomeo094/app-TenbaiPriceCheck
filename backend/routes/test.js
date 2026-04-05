@@ -1,24 +1,10 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 const webpush = require("web-push");
 const { chromium } = require("playwright-extra");
 const { getSupabase } = require("../lib/supabase");
+const pushService = require("../services/pushService");
 
 const router = express.Router();
-const SUBS_FILE = path.join(__dirname, "..", "push_subscriptions.json");
-
-function readSubs() {
-  try {
-    if (fs.existsSync(SUBS_FILE)) {
-      const raw = JSON.parse(fs.readFileSync(SUBS_FILE, "utf8"));
-      return Array.isArray(raw) ? raw : [];
-    }
-  } catch (e) {
-    console.error("[diagnostics] Đọc subscription lỗi:", e.message);
-  }
-  return [];
-}
 
 /**
  * GET /api/diagnostics — chỉ trạng thái, không trả về chuỗi khóa bí mật.
@@ -90,12 +76,7 @@ router.get("/", async (req, res, next) => {
  */
 router.post("/test-push", async (req, res, next) => {
   try {
-    const pub = (process.env.VAPID_PUBLIC_KEY || "").trim();
-    const priv = (process.env.VAPID_PRIVATE_KEY || "").trim();
-    const contact = (process.env.VAPID_CONTACT_EMAIL || "mailto:admin@localhost").trim();
-    const mail = contact.startsWith("mailto:") ? contact : `mailto:${contact}`;
-
-    if (!pub || !priv) {
+    if (!pushService.configureWebPush()) {
       return res.status(503).json({
         ok: false,
         detail: "VAPID chưa cấu hình đủ trên server",
@@ -104,7 +85,7 @@ router.post("/test-push", async (req, res, next) => {
       });
     }
 
-    const subs = readSubs();
+    const subs = await pushService.listSubscriptionsForWebPush();
     if (!subs.length) {
       return res.status(400).json({
         ok: false,
@@ -113,8 +94,6 @@ router.post("/test-push", async (req, res, next) => {
         failed: 0,
       });
     }
-
-    webpush.setVapidDetails(mail, pub, priv);
     const payload = JSON.stringify({
       title: "PriceCheck",
       body: "Test thành công",

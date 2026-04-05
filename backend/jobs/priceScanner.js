@@ -2,31 +2,17 @@
  * Cron quét price_monitors: Playwright + stealth lấy giá, cập nhật Supabase, Web Push khi đạt target.
  */
 
-const fs = require("fs");
-const path = require("path");
 const cron = require("node-cron");
 const webpush = require("web-push");
 const { chromium } = require("playwright-extra");
 const { getSupabaseForJobs } = require("../lib/supabase");
+const pushService = require("../services/pushService");
 /* Stealth đã bật trong server.js (playwright-extra dùng chung). */
 
-const SUBS_FILE = path.join(__dirname, "..", "push_subscriptions.json");
 const GOTO_TIMEOUT_MS = 45_000;
 const CRON_EXPR = "* * * * *"; // mỗi phút — lọc due theo interval_min trong DB
 
 let scanRunning = false;
-
-function readSubscriptions() {
-  try {
-    if (fs.existsSync(SUBS_FILE)) {
-      const raw = JSON.parse(fs.readFileSync(SUBS_FILE, "utf8"));
-      return Array.isArray(raw) ? raw : [];
-    }
-  } catch (e) {
-    console.error("[priceScanner] Đọc push_subscriptions.json lỗi:", e.message);
-  }
-  return [];
-}
 
 function writeSubscriptions(list) {
   try {
@@ -145,19 +131,14 @@ function monitorIsDue(row, nowMs) {
 }
 
 async function sendTargetPricePush(row, currentPrice) {
-  const pub = (process.env.VAPID_PUBLIC_KEY || "").trim();
-  const priv = (process.env.VAPID_PRIVATE_KEY || "").trim();
-  const contact = (process.env.VAPID_CONTACT_EMAIL || "mailto:admin@localhost").trim();
-  if (!pub || !priv) {
-    console.warn("[priceScanner] Bỏ qua Web Push: thiếu VAPID_PUBLIC_KEY hoặc VAPID_PRIVATE_KEY");
+  if (!pushService.configureWebPush()) {
+    console.warn("[priceScanner] Bỏ qua Web Push: VAPID chưa cấu hình.");
     return;
   }
 
-  webpush.setVapidDetails(contact.startsWith("mailto:") ? contact : `mailto:${contact}`, pub, priv);
-
-  let subs = readSubscriptions();
+  const subs = await pushService.listSubscriptionsForWebPush();
   if (!subs.length) {
-    console.warn("[priceScanner] Không có subscription nào trong push_subscriptions.json");
+    console.warn("[priceScanner] Không có subscription nào (Supabase / file).");
     return;
   }
 
@@ -179,9 +160,12 @@ async function sendTargetPricePush(row, currentPrice) {
     }
   }
 
-  if (dead.length) {
-    subs = subs.filter((s) => !dead.includes(s.endpoint));
-    writeSubscriptions(subs);
+  for (const ep of dead) {
+    try {
+      await pushService.removeSubscriptionEndpoint(ep);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
