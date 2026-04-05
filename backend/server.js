@@ -12,14 +12,11 @@ const { scrapeMoriMori } = require("./scrapers/morimori");
 chromium.use(StealthPlugin());
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// =========================================
-// CORS: origin * + cho phép header Ngrok (preflight từ browser)
-// =========================================
 app.use(
   cors({
     origin: "*",
+    credentials: true,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
@@ -30,6 +27,8 @@ app.use(
     exposedHeaders: ["Content-Type"],
   })
 );
+
+const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 
@@ -50,9 +49,11 @@ app.get("/", (req, res) => {
 
 // =========================================
 // API: Kiểm tra giá theo mã JAN
-// GET /api/check-price?jan=4901777359702
+// GET /api/check?jan=4901777359702
 // =========================================
-app.get("/api/check-price", async (req, res) => {
+app.get("/api/check", async (req, res) => {
+  console.log("📩 Nhận yêu cầu tra giá cho mã JAN:", req.query.jan);
+
   const janCode = req.query.jan?.toString().trim();
 
   if (!janCode) {
@@ -147,7 +148,9 @@ app.get("/api/check-price", async (req, res) => {
   }
 });
 
-// 404 — JSON chuẩn (sau mọi route)
+// =========================================
+// 404 — luôn đăng ký SAU CÙNG (sau mọi route GET/POST khác)
+// =========================================
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
@@ -180,7 +183,8 @@ process.on("uncaughtException", (err) => {
 // Start Server
 // =========================================
 app.listen(PORT, () => {
+  console.log("🚀 Server đã sẵn sàng tại cổng 3001, route: /api/check");
   console.log(`\n🚀 PriceCheck Backend đang chạy tại http://localhost:${PORT}`);
-  console.log(`📋 API: GET /api/check-price?jan=[MÃ_JAN]`);
+  console.log(`📋 API: GET /api/check?jan=[MÃ_JAN]`);
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
 });

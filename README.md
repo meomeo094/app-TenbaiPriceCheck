@@ -50,7 +50,7 @@ npm run build
 | Endpoint | Method | Mô tả |
 |----------|--------|-------|
 | `GET /` | GET | Health check |
-| `GET /api/check-price?jan=[CODE]` | GET | Kiểm tra giá theo mã JAN |
+| `GET /api/check?jan=[CODE]` | GET | Kiểm tra giá theo mã JAN |
 
 ### Ví dụ response:
 ```json

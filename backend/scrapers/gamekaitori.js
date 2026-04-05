@@ -1,13 +1,13 @@
 /**
  * Scraper cho gamekaitori.jp (買取wiki)
  *
- * Hai nguồn giá:
- * 1) Trang kết quả tìm kiếm: cặp .sub-pro-name + .sub-pro-jia (khi có giá trên list)
- * 2) Trang chi tiết /purchase/...: giá điều kiện ở đầu trang, dạng 「未開封：45,200 円」
- *    — PHẢI lấy trong phần nội dung chính (trước 「商品情報」), lấy MAX nếu nhiều mức.
+ * DOM structure:
+ * - Trang chi tiết /purchase/...
+ *   - Tên SP: h2.title (strip JAN code ở cuối)
+ *   - Giá điều kiện: "未開封：45,200 円" / "新品未使用：8,900 円" — trong khối chính (trước 商品情報)
+ *   - Lấy MAX trong tất cả mức điều kiện (giá thu mua cao nhất cho SP này)
  *
- * LỖI ĐÃ SỬA: .sub-pro-jia đầu tiên trên trang chi tiết là của SP gợi ý (cùng hãng),
- * không phải SP đang xem → không dùng querySelector('.sub-pro-jia') đơn độc.
+ * LỖI ĐÃ SỬA: .sub-pro-jia đầu tiên = SP gợi ý cùng hãng, không dùng querySelector đơn độc.
  */
 
 const SITE_NAME = "GameKaitori";
@@ -16,7 +16,7 @@ const BASE_URL = "https://gamekaitori.jp";
 /**
  * @param {import('playwright').Page} page
  * @param {string} janCode
- * @returns {Promise<{site: string, price: string|null, link: string, status: string}>}
+ * @returns {Promise<{site: string, name: string|null, price: string|null, link: string, status: string}>}
  */
 async function scrapeGameKaitori(page, janCode) {
   const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(janCode)}`;
@@ -24,67 +24,22 @@ async function scrapeGameKaitori(page, janCode) {
   try {
     await page.goto(searchUrl, { waitUntil: "networkidle", timeout: 25000 });
 
-    // --- A) Thử lấy giá ngay trên trang kết quả (cặp name + jia) ---
-    const fromSearch = await page.evaluate((jan) => {
-      const blocks = document.querySelectorAll(".sub-pro-name");
-      for (const nameEl of blocks) {
-        const text = nameEl.textContent?.trim() || "";
-        if (!text.includes(jan)) continue;
-
-        let priceEl = nameEl.nextElementSibling;
-        while (priceEl && !priceEl.classList.contains("sub-pro-jia")) {
-          priceEl = priceEl.nextElementSibling;
-        }
-        if (!priceEl) {
-          const parent = nameEl.parentElement;
-          priceEl = parent?.querySelector(".sub-pro-jia") || null;
-        }
-        if (!priceEl) continue;
-
-        const match = priceEl.textContent?.match(/[\d,]+円/);
-        if (match) {
-          const price = match[0].replace(/[,円]/g, "");
-          let link = null;
-          const container = nameEl.closest("a") || nameEl.parentElement?.querySelector("a[href*='/purchase/']");
-          if (container?.href?.includes("/purchase/")) link = container.href;
-          if (!link) {
-            document.querySelectorAll("a[href*='/purchase/']").forEach((a) => {
-              if (a.href.includes(jan) && !a.href.includes("#")) link = a.href;
-            });
-          }
-          return { price, link };
-        }
-      }
-      return null;
-    }, janCode);
-
-    if (fromSearch?.price) {
-      let link = fromSearch.link;
-      if (!link) {
-        link = await page.evaluate((jan) => {
-          for (const a of document.querySelectorAll("a[href*='/purchase/']")) {
-            if (a.href.includes(jan) && !a.href.includes("#")) return a.href;
-          }
-          return null;
-        }, janCode);
-      }
-      return {
-        site: SITE_NAME,
-        price: fromSearch.price,
-        link: link || searchUrl,
-        status: "success",
-      };
-    }
-
-    // --- B) Vào trang chi tiết: URL phải chứa đúng JAN ---
+    // --- Tìm link sản phẩm ---
+    // Ưu tiên: URL chứa JAN (hầu hết sản phẩm game/console)
+    // Fallback: link /purchase/ đầu tiên của gamekaitori.jp (iPhone/smartphone)
     const productLink = await page.evaluate((jan) => {
-      for (const a of document.querySelectorAll("a[href]")) {
+      const anchors = Array.from(document.querySelectorAll("a[href]"));
+      // 1) URL chứa JAN
+      for (const a of anchors) {
         const href = a.href;
-        if (
-          href.includes("gamekaitori.jp/purchase/") &&
-          href.includes(jan) &&
-          !href.includes("#")
-        ) {
+        if (href.includes("gamekaitori.jp/purchase/") && href.includes(jan) && !href.includes("#")) {
+          return href;
+        }
+      }
+      // 2) Link gamekaitori.jp/purchase/ đầu tiên (JAN không nằm trong URL)
+      for (const a of anchors) {
+        const href = a.href;
+        if (href.includes("gamekaitori.jp/purchase/") && !href.includes("#")) {
           return href;
         }
       }
@@ -92,73 +47,95 @@ async function scrapeGameKaitori(page, janCode) {
     }, janCode);
 
     if (!productLink) {
-      return { site: SITE_NAME, price: null, link: searchUrl, status: "not_found" };
+      return { site: SITE_NAME, name: null, price: null, link: searchUrl, status: "not_found" };
     }
 
-    await page.goto(productLink, { waitUntil: "domcontentloaded", timeout: 20000 });
-    await page.waitForTimeout(1200);
+    // --- Vào trang chi tiết ---
+    // networkidle cần thiết vì giá điều kiện được render bởi JS sau khi DOM load
+    await page.goto(productLink, { waitUntil: "networkidle", timeout: 30000 });
 
-    const detailPrice = await page.evaluate((jan) => {
-      function nameMatchesJan(text, j) {
-        if (!text || !j || !text.includes(j)) return false;
-        const esc = j.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const re = new RegExp(`(^|[^0-9])${esc}([^0-9]|$)`);
-        return re.test(text);
+    const detail = await page.evaluate((jan) => {
+      // === Lấy tên sản phẩm (h2.title, strip JAN + model code) ===
+      const titleEl = document.querySelector("h2.title");
+      let name = titleEl?.textContent?.trim() ?? null;
+      let shortName = null; // tên không có JAN, dùng để match sub-pro-name
+      if (name) {
+        shortName = name.replace(jan, "").replace(/\b[A-Z0-9]+-[A-Z0-9-]+\b/g, "").replace(/\s+/g, " ").trim();
+        name = shortName;
       }
-      function maxPriceFromConditionBlock(mainText) {
-        const r = /[：:]\s*([\d,]+)\s*円/g;
+
+      // === Helper functions ===
+      function sliceMain(text) {
+        const markers = ["商品情報", "\n買取不可品"];
+        let end = text.length;
+        for (const m of markers) {
+          const i = text.indexOf(m);
+          if (i >= 0 && i < end) end = i;
+        }
+        return text.slice(0, end);
+      }
+
+      function maxPrice(mainText) {
+        const re = /[：:]\s*([\d,]+)\s*円/g;
         let m;
         let max = -1;
-        while ((m = r.exec(mainText)) !== null) {
+        while ((m = re.exec(mainText)) !== null) {
           const n = parseInt(m[1].replace(/,/g, ""), 10);
-          if (!Number.isNaN(n) && n > 0 && n < 10000000) max = Math.max(max, n);
+          if (!Number.isNaN(n) && n > 0 && n < 20000000) max = Math.max(max, n);
         }
         return max > 0 ? String(max) : null;
       }
-      function sliceMainProductText(fullText) {
-        const markers = ["商品情報", "\n買取不可品"];
-        let end = fullText.length;
-        for (const mk of markers) {
-          const i = fullText.indexOf(mk);
-          if (i >= 0 && i < end) end = i;
-        }
-        return fullText.slice(0, end);
+
+      // === Lấy giá (3 cấp ưu tiên) ===
+      let price = null;
+
+      // 1) .rank_label span — giá chính đã được JS render (game/console)
+      const rankLabel = document.querySelector(".rank_label span");
+      if (rankLabel) {
+        const t = rankLabel.textContent?.trim();
+        if (t && /^[\d,]+$/.test(t)) price = t.replace(/,/g, "");
       }
 
-      const full = document.body.innerText || "";
-      const main = sliceMainProductText(full);
-      const fromConditions = maxPriceFromConditionBlock(main);
-      if (fromConditions) return fromConditions;
-
-      const blocks = document.querySelectorAll(".sub-pro-name");
-      for (const nameEl of blocks) {
-        const text = nameEl.textContent?.trim() || "";
-        if (!nameMatchesJan(text, jan)) continue;
-
-        let priceEl = nameEl.nextElementSibling;
-        while (priceEl && !priceEl.classList.contains("sub-pro-jia")) {
-          priceEl = priceEl.nextElementSibling;
-        }
-        if (!priceEl) continue;
-        const match = priceEl.textContent?.match(/[\d,]+円/);
-        if (match) return match[0].replace(/[,円]/g, "");
+      // 2) Condition block trong main text: "未開封：45,200 円"
+      if (!price) {
+        const mainText = sliceMain(document.body.innerText || "");
+        price = maxPrice(mainText);
       }
-      return null;
+
+      // 3) Fallback: .sub-pro-name + .sub-pro-jia khớp tên SP (smartphone/tablet)
+      if (!price && shortName) {
+        const nameEls = document.querySelectorAll(".sub-pro-name");
+        for (const nameEl of nameEls) {
+          const t = nameEl.textContent?.trim() ?? "";
+          // Kiểm tra tên ngắn khớp (bỏ qua JAN/model trong URL)
+          if (!shortName || !t.includes(shortName.slice(0, 10))) continue;
+          let priceEl = nameEl.nextElementSibling;
+          while (priceEl && !priceEl.classList.contains("sub-pro-jia")) {
+            priceEl = priceEl.nextElementSibling;
+          }
+          if (!priceEl) continue;
+          const m = priceEl.textContent?.match(/([\d,]+)円/);
+          if (m) { price = m[1].replace(/,/g, ""); break; }
+        }
+      }
+
+      return { name, price };
     }, janCode);
 
-    if (!detailPrice) {
-      return { site: SITE_NAME, price: null, link: productLink, status: "not_found" };
+    if (!detail.price) {
+      return { site: SITE_NAME, name: detail.name, price: null, link: productLink, status: "not_found" };
     }
 
     return {
       site: SITE_NAME,
-      price: detailPrice,
+      name: detail.name,
+      price: detail.price,
       link: productLink,
       status: "success",
     };
   } catch (err) {
     console.error(`[${SITE_NAME}] Lỗi:`, err.message);
-    return { site: SITE_NAME, price: null, link: searchUrl, status: "error" };
+    return { site: SITE_NAME, name: null, price: null, link: searchUrl, status: "error" };
   }
 }
 

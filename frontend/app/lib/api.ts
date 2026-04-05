@@ -1,5 +1,6 @@
 export interface PriceResult {
   site: string;
+  name: string | null;
   price: string | null;
   link: string;
   status: "success" | "error" | "not_found";
@@ -11,8 +12,8 @@ export interface CheckPriceResponse {
   timestamp: string;
 }
 
-/** Base URL Backend / Ngrok. Vercel: NEXT_PUBLIC_API_URL */
-const API_BASE_URL =
+/** Backend / Ngrok — luôn từ process.env.NEXT_PUBLIC_API_URL */
+const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
 
 /** Mọi request tới API (đặc biệt qua Ngrok) phải kèm header này. */
@@ -29,22 +30,26 @@ export async function apiFetch(
   path: string,
   init?: Omit<RequestInit, "headers"> & { headers?: HeadersInit }
 ): Promise<Response> {
-  const url = path.startsWith("http") ? path : `${API_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  const finalUrl = path.startsWith("http")
+    ? path
+    : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  console.log("🚀 Frontend đang gọi đến:", finalUrl);
+
   const mergedHeaders = new Headers(API_REQUEST_HEADERS);
   if (init?.headers) {
     new Headers(init.headers).forEach((v, k) => mergedHeaders.set(k, v));
   }
-  // Luôn gắn lại sau merge — không cho header tùy chỉnh ghi đè bỏ qua Ngrok
   mergedHeaders.set("ngrok-skip-browser-warning", "true");
-  return fetch(url, {
+  return fetch(finalUrl, {
     ...init,
     headers: mergedHeaders,
   });
 }
 
 export async function checkPrice(janCode: string): Promise<CheckPriceResponse> {
-  const url = `/api/check-price?jan=${encodeURIComponent(janCode)}`;
-  const response = await apiFetch(url, { method: "GET" });
+  const path = `/api/check?jan=${encodeURIComponent(janCode)}`;
+  const response = await apiFetch(path, { method: "GET" });
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -58,7 +63,7 @@ export async function checkPrice(janCode: string): Promise<CheckPriceResponse> {
  * Test nhanh API (JSON thật, không phải HTML cảnh báo Ngrok):
  * - Thanh địa chỉ trình duyệt KHÔNG gửi được custom header → dễ nhầm trang Ngrok.
  * - Mở DevTools (F12) > Console, dán (thay BASE bằng URL Ngrok hoặc http://localhost:3001):
- *   fetch(BASE + "/api/check-price?jan=4902370553024", { headers: { Accept: "application/json", "ngrok-skip-browser-warning": "true" } }).then(r => r.json()).then(console.log)
- * - Hoặc PowerShell: curl.exe -H "ngrok-skip-browser-warning: true" "BASE/api/check-price?jan=4902370553024"
+ *   fetch(BASE + "/api/check?jan=4902370553024", { headers: { Accept: "application/json", "ngrok-skip-browser-warning": "true" } }).then(r => r.json()).then(console.log)
+ * - Hoặc PowerShell: curl.exe -H "ngrok-skip-browser-warning: true" "BASE/api/check?jan=4902370553024"
  * Kết quả phải là object JSON { jan, results, ... }; nếu thấy HTML interstitial thì thiếu header trên.
  */

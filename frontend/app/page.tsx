@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { checkPrice, CheckPriceResponse, PriceResult } from "./lib/api";
 import PriceCard from "./components/PriceCard";
 import LoadingSkeleton from "./components/LoadingSkeleton";
+import HistoryPanel from "./components/HistoryPanel";
+import { useHistory } from "./hooks/useHistory";
 
 const JanScanner = dynamic(() => import("./components/JanScanner"), {
   ssr: false,
@@ -18,23 +20,48 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSearch = useCallback(async (code: string) => {
-    const trimmed = code.trim();
-    if (!trimmed) return;
+  const { history, addEntry, clearHistory } = useHistory();
 
-    setIsLoading(true);
-    setError(null);
-    setResults(null);
+  const handleSearch = useCallback(
+    async (code: string) => {
+      const trimmed = code.trim();
+      if (!trimmed) return;
 
-    try {
-      const data = await checkPrice(trimmed);
-      setResults(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Đã có lỗi xảy ra. Vui lòng thử lại.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      setIsLoading(true);
+      setError(null);
+      setResults(null);
+
+      try {
+        const data = await checkPrice(trimmed);
+        setResults(data);
+
+        // Lưu lịch sử
+        const successResults = data.results.filter(
+          (r) => r.status === "success" && r.price
+        );
+        const best = successResults.sort(
+          (a, b) =>
+            parseInt(b.price ?? "0") - parseInt(a.price ?? "0")
+        )[0];
+
+        const firstName = data.results.find((r) => r.name)?.name ?? null;
+
+        addEntry({
+          jan: data.jan,
+          name: firstName,
+          highestPrice: best ? parseInt(best.price!, 10) : null,
+          highestSite: best?.site ?? null,
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Đã có lỗi xảy ra. Vui lòng thử lại."
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [addEntry]
+  );
 
   const handleScanSuccess = useCallback(
     (code: string) => {
@@ -55,6 +82,12 @@ export default function Home() {
     setResults(null);
     setError(null);
     inputRef.current?.focus();
+  };
+
+  const handleHistorySelect = (jan: string) => {
+    setJanCode(jan);
+    handleSearch(jan);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const sortedResults = results?.results
@@ -80,7 +113,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-8 pt-5 max-w-lg mx-auto w-full">
+      <div className="flex-1 overflow-y-auto px-4 pb-12 pt-5 max-w-lg mx-auto w-full">
         {/* Search Form */}
         <form onSubmit={handleFormSubmit} className="space-y-3">
           <label className="block text-slate-300 text-sm font-medium">
@@ -104,27 +137,45 @@ export default function Home() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white p-1"
                 aria-label="Xóa"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </button>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Scan Button */}
             <button
               type="button"
               onClick={() => setIsScanning(true)}
               className="flex items-center justify-center gap-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white font-semibold py-4 rounded-2xl transition-colors text-base"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                />
               </svg>
               Quét mã
             </button>
 
-            {/* Search Button */}
             <button
               type="submit"
               disabled={!janCode.trim() || isLoading}
@@ -133,8 +184,19 @@ export default function Home() {
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
                 </svg>
               )}
               {isLoading ? "Đang tìm..." : "Tìm giá"}
@@ -162,7 +224,9 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <h2 className="text-slate-300 text-sm font-medium">
                 Kết quả cho mã{" "}
-                <span className="font-mono text-indigo-400 font-bold">{results.jan}</span>
+                <span className="font-mono text-indigo-400 font-bold">
+                  {results.jan}
+                </span>
               </h2>
               {highestPrice && (
                 <span className="text-xs text-slate-500">
@@ -172,11 +236,7 @@ export default function Home() {
             </div>
 
             {sortedResults.map((result: PriceResult, index: number) => (
-              <PriceCard
-                key={result.site}
-                result={result}
-                rank={index + 1}
-              />
+              <PriceCard key={result.site} result={result} rank={index + 1} />
             ))}
 
             {sortedResults.every((r) => r.status !== "success") && (
@@ -195,10 +255,17 @@ export default function Home() {
             <div className="text-6xl mb-4">📱</div>
             <p className="text-slate-400 text-base font-medium">Nhập hoặc quét mã JAN</p>
             <p className="text-slate-600 text-sm mt-2">
-              Kiểm tra giá thu mua từ GameKaitori, 1-chome và KaitoriShouten
+              So sánh giá thu mua từ 4 hệ thống: GameKaitori, 1-chome, Homura, MoriMori
             </p>
           </div>
         )}
+
+        {/* History */}
+        <HistoryPanel
+          history={history}
+          onSelect={handleHistorySelect}
+          onClear={clearHistory}
+        />
       </div>
 
       {/* Scanner Modal */}

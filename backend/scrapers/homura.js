@@ -2,12 +2,9 @@
  * Scraper cho kaitori-homura.com (買取ホムラ)
  *
  * Flow:
- *   1. GET /products?q[name_or_jan_code_cont]=JAN  → danh sách kết quả
- *   2. Lấy link đầu tiên /products/{id}
- *   3. Vào trang SP → lấy giá hiển thị cạnh "買取価格（税込）："
- *
- * DOM price: span.text-base.font-\[300\]  → "45,300円"
- *   (class Tailwind, selector phải dùng evaluate thay vì querySelector trực tiếp)
+ *   1. GET /products?q[name_or_jan_code_cont]=JAN → lấy link /products/{id}
+ *   2. Vào trang SP → tên: h3.text-xl.font-semibold.text-primary-blue
+ *                  → giá: TreeWalker sau label 買取価格
  */
 
 const SITE_NAME = "Homura";
@@ -16,7 +13,7 @@ const BASE_URL = "https://kaitori-homura.com";
 /**
  * @param {import('playwright').Page} page
  * @param {string} janCode
- * @returns {Promise<{site: string, price: string|null, link: string, status: string}>}
+ * @returns {Promise<{site: string, name: string|null, price: string|null, link: string, status: string}>}
  */
 async function scrapeHomura(page, janCode) {
   const searchUrl = `${BASE_URL}/products?q%5Bname_or_jan_code_cont%5D=${encodeURIComponent(janCode)}`;
@@ -25,7 +22,6 @@ async function scrapeHomura(page, janCode) {
     await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
     await page.waitForTimeout(1500);
 
-    // Lấy link sản phẩm đầu tiên khớp JAN
     const productLink = await page.evaluate(({ base }) => {
       const links = document.querySelectorAll("a[href]");
       for (const link of links) {
@@ -38,58 +34,73 @@ async function scrapeHomura(page, janCode) {
     }, { base: BASE_URL });
 
     if (!productLink) {
-      return { site: SITE_NAME, price: null, link: searchUrl, status: "not_found" };
+      return { site: SITE_NAME, name: null, price: null, link: searchUrl, status: "not_found" };
     }
 
-    // Vào trang chi tiết sản phẩm
     await page.goto(productLink, { waitUntil: "domcontentloaded", timeout: 20000 });
     await page.waitForTimeout(1500);
 
-    // Lấy giá từ label "買取価格（税込）："
-    // class Tailwind: "text-base font-[300]"
-    const price = await page.evaluate(() => {
-      // Ưu tiên: tìm text node sau label 買取価格
-      const allEls = document.querySelectorAll("span, div, p");
-      for (const el of allEls) {
-        const cls = el.className || "";
-        if (!cls.includes("font") && !cls.includes("text")) continue;
-        const text = el.textContent?.trim();
-        if (text && /^[\d,]+円$/.test(text)) {
-          return text.replace(/[,円]/g, "");
+    const detail = await page.evaluate(() => {
+      // === Tên SP: h3 màu primary-blue (class Tailwind) ===
+      let name = null;
+      const h3s = document.querySelectorAll("h3");
+      for (const h of h3s) {
+        const cls = h.className || "";
+        if (cls.includes("primary-blue") || cls.includes("semibold")) {
+          const t = h.textContent?.trim();
+          if (t && t.length > 2 && !t.includes("買取")) {
+            name = t;
+            break;
+          }
+        }
+      }
+      // Fallback: body text giữa 商品詳細 và 買取価格
+      if (!name) {
+        const lines = (document.body.innerText || "").split("\n").map(l => l.trim()).filter(Boolean);
+        let idx = lines.indexOf("商品詳細");
+        if (idx >= 0) {
+          for (let i = idx + 1; i < Math.min(idx + 5, lines.length); i++) {
+            const l = lines[i];
+            if (l.length > 3 && !l.includes("買取") && !l.includes("ログイン")) {
+              name = l;
+              break;
+            }
+          }
         }
       }
 
-      // Fallback: TreeWalker lấy yen value đầu tiên sau label 買取価格
+      // === Giá: TreeWalker sau label 買取価格 ===
       let foundLabel = false;
+      let price = null;
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       let node;
       while ((node = walker.nextNode())) {
         const t = node.textContent?.trim();
         if (!t) continue;
-        if (t.includes("買取価格")) {
-          foundLabel = true;
-          continue;
-        }
+        if (t.includes("買取価格")) { foundLabel = true; continue; }
         if (foundLabel && /^[\d,]+円$/.test(t)) {
-          return t.replace(/[,円]/g, "");
+          price = t.replace(/[,円]/g, "");
+          break;
         }
       }
-      return null;
+
+      return { name, price };
     });
 
-    if (!price) {
-      return { site: SITE_NAME, price: null, link: productLink, status: "not_found" };
+    if (!detail.price) {
+      return { site: SITE_NAME, name: detail.name, price: null, link: productLink, status: "not_found" };
     }
 
     return {
       site: SITE_NAME,
-      price,
+      name: detail.name,
+      price: detail.price,
       link: productLink,
       status: "success",
     };
   } catch (err) {
     console.error(`[${SITE_NAME}] Lỗi:`, err.message);
-    return { site: SITE_NAME, price: null, link: searchUrl, status: "error" };
+    return { site: SITE_NAME, name: null, price: null, link: searchUrl, status: "error" };
   }
 }
 
