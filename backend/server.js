@@ -49,9 +49,9 @@ app.get("/", (req, res) => {
 
 // =========================================
 // API: Kiểm tra giá theo mã JAN
-// GET /api/check?jan=4901777359702
+// GET /api/check?jan=4901777359702  (alias: /api/check/, /check)
 // =========================================
-app.get("/api/check", async (req, res) => {
+async function handleJanCheck(req, res) {
   console.log("📩 Nhận yêu cầu tra giá cho mã JAN:", req.query.jan);
 
   const janCode = req.query.jan?.toString().trim();
@@ -60,7 +60,6 @@ app.get("/api/check", async (req, res) => {
     return res.status(400).json({ error: "Thiếu tham số: jan" });
   }
 
-  // Kiểm tra định dạng JAN code (8 hoặc 13 chữ số)
   if (!/^\d{8,14}$/.test(janCode)) {
     return res.status(400).json({ error: "Mã JAN không hợp lệ. Phải là 8-14 chữ số." });
   }
@@ -71,7 +70,6 @@ app.get("/api/check", async (req, res) => {
   console.log(`\n[${new Date().toLocaleTimeString()}] 🔍 Tìm kiếm JAN: ${janCode}`);
 
   try {
-    // Khởi động browser với Stealth mode
     browser = await chromium.launch({
       headless: true,
       args: [
@@ -94,9 +92,6 @@ app.get("/api/check", async (req, res) => {
       viewport: { width: 390, height: 844 },
     });
 
-    // -------------------------------------------------------
-    // Chạy song song 3 scrapers với Promise.all
-    // -------------------------------------------------------
     const [page1, page2, page3, page4] = await Promise.all([
       context.newPage(),
       context.newPage(),
@@ -104,7 +99,7 @@ app.get("/api/check", async (req, res) => {
       context.newPage(),
     ]);
 
-    console.log(`  → Đang cào song song 3 trang...`);
+    console.log(`  → Đang cào song song 4 trang...`);
 
     const [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult] = await Promise.all([
       scrapeGameKaitori(page1, janCode),
@@ -115,19 +110,16 @@ app.get("/api/check", async (req, res) => {
 
     const results = [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult];
 
-    // Log kết quả
     results.forEach((r) => {
       const priceDisplay = r.price ? `¥${parseInt(r.price).toLocaleString()}` : "N/A";
       console.log(`  [${r.site}] ${r.status} → ${priceDisplay}`);
     });
 
-    const response = {
+    res.json({
       jan: janCode,
       results,
       timestamp: new Date().toISOString(),
-    };
-
-    res.json(response);
+    });
   } catch (err) {
     console.error(`[ERROR] Lỗi tổng quát:`, err.message);
     res.status(500).json({
@@ -135,7 +127,6 @@ app.get("/api/check", async (req, res) => {
       details: err.message,
     });
   } finally {
-    // BẮT BUỘC: Đóng browser để tránh zombie process
     if (browser) {
       try {
         await browser.close();
@@ -146,7 +137,11 @@ app.get("/api/check", async (req, res) => {
       activeBrowsers.delete(browserId);
     }
   }
-});
+}
+
+app.get("/api/check", handleJanCheck);
+app.get("/api/check/", handleJanCheck);
+app.get("/check", handleJanCheck);
 
 // =========================================
 // 404 — luôn đăng ký SAU CÙNG (sau mọi route GET/POST khác)
