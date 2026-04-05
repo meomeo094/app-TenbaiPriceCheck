@@ -12,28 +12,37 @@ export interface CheckPriceResponse {
   timestamp: string;
 }
 
-/** Backend / Ngrok — luôn từ process.env.NEXT_PUBLIC_API_URL */
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
+/**
+ * Luôn gọi same-origin `/api/check` (Next.js proxy → Express).
+ * Trên Vercel: không phụ thuộc NEXT_PUBLIC_* trong bundle; server đọc BACKEND_URL / NEXT_PUBLIC_API_URL.
+ */
+const CHECK_PATH_PREFIX = "/api/check";
 
-/** Mọi request tới API (đặc biệt qua Ngrok) phải kèm header này. */
+/** Mọi request tới API (proxy thêm header khi gọi Ngrok từ server). */
 export const API_REQUEST_HEADERS: HeadersInit = {
   Accept: "application/json",
   "ngrok-skip-browser-warning": "true",
 };
 
+function resolveSameOriginUrl(path: string): string {
+  if (path.startsWith("http")) return path;
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000";
+  return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 /**
- * fetch() gắn sẵn header Ngrok + Accept JSON.
- * Dùng cho mọi endpoint Backend để tránh HTML cảnh báo Ngrok.
+ * fetch same-origin `/api/check` (qua proxy Next.js) hoặc URL tuyệt đối.
  */
 export async function apiFetch(
   path: string,
   init?: Omit<RequestInit, "headers"> & { headers?: HeadersInit }
 ): Promise<Response> {
-  const finalUrl = path.startsWith("http")
-    ? path
-    : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-
+  const finalUrl = resolveSameOriginUrl(path);
   console.log("🚀 Frontend đang gọi đến:", finalUrl);
 
   const mergedHeaders = new Headers(API_REQUEST_HEADERS);
@@ -48,7 +57,7 @@ export async function apiFetch(
 }
 
 export async function checkPrice(janCode: string): Promise<CheckPriceResponse> {
-  const path = `/api/check?jan=${encodeURIComponent(janCode)}`;
+  const path = `${CHECK_PATH_PREFIX}?jan=${encodeURIComponent(janCode)}`;
   const response = await apiFetch(path, { method: "GET" });
 
   if (!response.ok) {
@@ -60,10 +69,6 @@ export async function checkPrice(janCode: string): Promise<CheckPriceResponse> {
 }
 
 /*
- * Test nhanh API (JSON thật, không phải HTML cảnh báo Ngrok):
- * - Thanh địa chỉ trình duyệt KHÔNG gửi được custom header → dễ nhầm trang Ngrok.
- * - Mở DevTools (F12) > Console, dán (thay BASE bằng URL Ngrok hoặc http://localhost:3001):
- *   fetch(BASE + "/api/check?jan=4902370553024", { headers: { Accept: "application/json", "ngrok-skip-browser-warning": "true" } }).then(r => r.json()).then(console.log)
- * - Hoặc PowerShell: curl.exe -H "ngrok-skip-browser-warning: true" "BASE/api/check?jan=4902370553024"
- * Kết quả phải là object JSON { jan, results, ... }; nếu thấy HTML interstitial thì thiếu header trên.
+ * Test nhanh (sau khi bật Backend + Ngrok, đặt BACKEND_URL trên Vercel):
+ * - Trình duyệt tại trang app: fetch("/api/check?jan=4902370553024", { headers: { Accept: "application/json", "ngrok-skip-browser-warning": "true" } }).then(r => r.json()).then(console.log)
  */

@@ -38,12 +38,13 @@ npm run build
 
 1. Cài Ngrok: https://ngrok.com
 2. Chạy: `ngrok http 3001`
-3. Copy URL Ngrok (vd: `https://abc123.ngrok-free.app`)
-4. Cập nhật `frontend/.env.local` (hoặc biến trên Vercel):
+3. Copy URL Ngrok (vd: `https://abc123.ngrok-free.app`) — **không** thêm `/` cuối, **không** thêm `/api`.
+4. **Vercel → Settings → Environment Variables** (Production + Preview), thêm **`BACKEND_URL`**:
    ```
-   NEXT_PUBLIC_API_URL=https://abc123.ngrok-free.app
+   BACKEND_URL=https://abc123.ngrok-free.app
    ```
-5. Redeploy lên Vercel
+   Sau đó **Redeploy**. Trình duyệt gọi `https://<app-vercel>/api/check` (proxy Next.js), server Vercel mới gọi Ngrok → Express.
+5. Local dev: `frontend/.env.local` có thể dùng `BACKEND_URL` hoặc `NEXT_PUBLIC_API_URL` trỏ `http://127.0.0.1:3001` (xem `.env.example`).
 
 ## API Backend
 

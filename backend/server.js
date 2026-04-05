@@ -152,6 +152,7 @@ app.get("/api/check", async (req, res) => {
 // 404 — luôn đăng ký SAU CÙNG (sau mọi route GET/POST khác)
 // =========================================
 app.use((req, res) => {
+  console.log("404 Not found:", req.method, req.originalUrl);
   res.status(404).json({ error: "Not found" });
 });
 
