@@ -1,7 +1,9 @@
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
-const path = require("path");
 const { chromium } = require("playwright-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 
@@ -9,30 +11,37 @@ const { scrapeGameKaitori } = require("./scrapers/gamekaitori");
 const { scrapeIchome } = require("./scrapers/ichome");
 const { scrapeHomura } = require("./scrapers/homura");
 const { scrapeMoriMori } = require("./scrapers/morimori");
+const monitorRoutes = require("./routes/monitor");
+const pushRoutes = require("./routes/push");
+const { verifySupabaseConnection } = require("./lib/supabase");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
 chromium.use(StealthPlugin());
+
+const { startPriceScannerJob } = require("./jobs/priceScanner");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // =========================================
 // CORS — ĐẦU TIÊN, trước mọi middleware/route
-// origin: true phản chiếu Origin header (localhost, Vercel, Ngrok đều ok)
-// credentials: false — tránh xung đột với origin: * / browser CORS spec
 // =========================================
 app.use(
   cors({
-    origin: true,
-    credentials: false,
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Accept", "ngrok-skip-browser-warning", "Authorization"],
+    origin: "*",
+    allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
   })
 );
 // Không dùng app.options("*", cors()) — path-to-regexp mới (Express 5) báo PathError với "*".
 // Middleware cors() ở trên đã tự trả OPTIONS preflight cho mọi route.
 
 app.use(express.json());
+
+// =========================================
+// Monitors — CRUD Supabase price_monitors
+// =========================================
+app.use("/api/monitors", monitorRoutes);
+app.use("/api/push", pushRoutes);
 
 // Lưu browser instances để cleanup
 const activeBrowsers = new Map();
@@ -165,11 +174,22 @@ app.get("/api/check", async (req, res) => {
 });
 
 // =========================================
-// 404 — SAU CÙNG, sau mọi route
+// 404 — sau mọi route khớp
 // =========================================
 app.use((req, res) => {
   console.log(`❌ 404 — ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: "Not found", path: req.originalUrl });
+});
+
+// =========================================
+// Lỗi từ next(err) — luôn trả JSON (đặt cuối stack)
+// =========================================
+app.use((err, req, res, next) => {
+  console.error("[ERROR]", err?.message || err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: "Lỗi server", details: err?.message || String(err) });
 });
 
 // =========================================
@@ -190,10 +210,17 @@ process.on("uncaughtException", (err) => { console.error("Uncaught:", err); clea
 // =========================================
 // Start
 // =========================================
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log("📍 Backend đang đợi tại: GET /api/check");
   console.log(`🚀 PriceCheck Backend chạy tại http://localhost:${PORT}`);
   console.log(`📋 Gọi: GET http://localhost:${PORT}/api/check?jan=4902370553024`);
   console.log(`📊 Top: GET http://localhost:${PORT}/api/top-searches`);
+  console.log(`📌 Monitors: GET|POST http://localhost:${PORT}/api/monitors`);
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
+  await verifySupabaseConnection();
+  if (process.env.DISABLE_PRICE_SCANNER !== "1") {
+    startPriceScannerJob();
+  } else {
+    console.log("⏸️  priceScanner tắt (DISABLE_PRICE_SCANNER=1)\n");
+  }
 });

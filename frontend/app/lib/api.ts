@@ -68,6 +68,91 @@ export async function getTopSearches(): Promise<TopSearch[]> {
   }
 }
 
+export interface PriceMonitorRow {
+  id?: number | string;
+  product_url: string;
+  target_price: number;
+  interval_min: number;
+  notification_channel?: string;
+}
+
+export async function listMonitors(): Promise<PriceMonitorRow[]> {
+  const response = await apiFetch("/api/monitors", { method: "GET" });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Danh sách monitor lỗi ${response.status}: ${t}`);
+  }
+  const data = await response.json() as { monitors?: PriceMonitorRow[] };
+  return data.monitors ?? [];
+}
+
+export async function createMonitor(payload: {
+  product_url: string;
+  target_price: number;
+  interval_min: number;
+  notification_channel?: string;
+}): Promise<PriceMonitorRow> {
+  const response = await apiFetch("/api/monitors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      product_url: payload.product_url,
+      target_price: payload.target_price,
+      interval_min: payload.interval_min,
+      notification_channel: payload.notification_channel ?? "push",
+    }),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    monitor?: PriceMonitorRow;
+    error?: string;
+    details?: string;
+  };
+  if (!response.ok) {
+    throw new Error(data.error || data.details || `Lỗi ${response.status}`);
+  }
+  if (!data.monitor) {
+    throw new Error("Phản hồi không có monitor");
+  }
+  return data.monitor;
+}
+
+export async function fetchVapidPublicKey(): Promise<{
+  configured: boolean;
+  publicKey?: string;
+  error?: string;
+}> {
+  const response = await apiFetch("/api/push/vapid-public", { method: "GET" });
+  return response.json() as Promise<{
+    configured: boolean;
+    publicKey?: string;
+    error?: string;
+  }>;
+}
+
+export async function postPushSubscription(subscription: object): Promise<void> {
+  const response = await apiFetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subscription }),
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Lưu subscription lỗi ${response.status}: ${t}`);
+  }
+}
+
+/** Chuẩn hóa VAPID public key (base64url) → Uint8Array cho PushManager.subscribe */
+export function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const out = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    out[i] = rawData.charCodeAt(i);
+  }
+  return out;
+}
+
 /*
  * Self-check: route khớp 100%
  * Backend  server.js     : app.get("/api/check", ...)

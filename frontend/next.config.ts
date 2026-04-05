@@ -3,6 +3,7 @@ import withPWA from "@ducanh2912/next-pwa";
 
 const withPWAConfig = withPWA({
   dest: "public",
+  sw: "pwa-sw.js",
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
@@ -10,6 +11,7 @@ const withPWAConfig = withPWA({
   extendDefaultRuntimeCaching: true,
   workboxOptions: {
     disableDevLogs: true,
+    importScripts: ["/web-push-handlers.js"],
     runtimeCaching: [
       {
         urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
