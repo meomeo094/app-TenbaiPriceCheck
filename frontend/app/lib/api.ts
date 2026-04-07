@@ -152,7 +152,7 @@ export async function postPushSubscription(subscription: object): Promise<void> 
  * Base64URL (VAPID) → Uint8Array cho `PushManager.subscribe({ applicationServerKey })`.
  * Base64URL: `-` → `+`, `_` → `/`, thêm padding `=` khi cần.
  */
-export function urlBase64ToUint8Array(base64String: string): Uint8Array {
+export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   let s = base64String.trim().replace(/^["']|["']$/g, "");
   const dataUrl = /^data:[^;]+;base64,(.+)$/i.exec(s);
   if (dataUrl) s = dataUrl[1];
@@ -169,7 +169,8 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
       `VAPID public key không hợp lệ (sau giải mã: ${out.length} byte, cần 65). Kiểm tra base64url trên server.`
     );
   }
-  return out;
+  // Bản sao buffer tách biệt — ArrayBuffer cố định, khớp BufferSource / PushManager (không dùng SharedArrayBuffer).
+  return new Uint8Array(out) as Uint8Array<ArrayBuffer>;
 }
 
 export interface DiagnosticsResponse {
