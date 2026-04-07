@@ -30,22 +30,45 @@ function promiseWithTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
 }
 
 /**
- * Luôn gọi register() (tránh registration cũ kẹt), rồi chờ ready có timeout — tránh treo vô hạn trên iOS.
+ * Đăng ký SW rồi đảm bảo có worker active.
+ * Không dùng `navigator.serviceWorker.ready`: trên Safari / PWA iOS promise này đôi khi không resolve
+ * dù SW đã active → gây lỗi "quá 30s". Thay vào đó chờ `registration.active` (poll + fallback).
  */
 async function getOrRegisterServiceWorker(log: StepLogger): Promise<ServiceWorkerRegistration> {
   const path = serviceWorkerScriptPath();
+  const waitMs = 30000;
   log(`register("${path}")…`);
-  const reg = await navigator.serviceWorker.register(path, { scope: "/", updateViaCache: "none" });
+  let reg = await navigator.serviceWorker.register(path, { scope: "/", updateViaCache: "none" });
   log(
     `Đã register (active=${reg.active ? "có" : "chưa"}, installing=${reg.installing ? "có" : "không"}, waiting=${reg.waiting ? "có" : "không"}).`
   );
 
-  await promiseWithTimeout(navigator.serviceWorker.ready, 30000, "navigator.serviceWorker.ready");
-  log("Service Worker đã ready.");
+  if (!reg.active) {
+    log("Chờ reg.active (poll, không dùng navigator.serviceWorker.ready)…");
+    const start = Date.now();
+    while (!reg.active && Date.now() - start < waitMs) {
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  }
+
+  if (!reg.active) {
+    const alt = await navigator.serviceWorker.getRegistration("/");
+    if (alt?.active && alt.pushManager) {
+      log("Dùng registration hiện có (getRegistration có active).");
+      reg = alt;
+    }
+  }
 
   if (!reg.pushManager) {
-    throw new Error("pushManager không khả dụng trên registration này.");
+    throw new Error("pushManager không khả dụng (thiết bị / context không hỗ trợ Web Push).");
   }
+  if (!reg.active) {
+    throw new Error(
+      "Chưa có Service Worker active sau khi đăng ký. Thử tải lại trang hoặc gỡ PWA rồi Thêm lại Màn hình chính."
+    );
+  }
+
+  log(`Service Worker active: ${reg.active.scriptURL}`);
   return reg;
 }
 
