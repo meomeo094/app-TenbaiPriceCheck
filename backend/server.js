@@ -1,10 +1,6 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
-const pushService = require("./services/pushService");
-pushService.ensureVapidKeysInEnvFile();
-pushService.configureWebPush();
-
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
@@ -15,16 +11,12 @@ const { scrapeGameKaitori } = require("./scrapers/gamekaitori");
 const { scrapeIchome } = require("./scrapers/ichome");
 const { scrapeHomura } = require("./scrapers/homura");
 const { scrapeMoriMori } = require("./scrapers/morimori");
-const monitorRoutes = require("./routes/monitor");
-const pushRoutes = require("./routes/push");
-const pushSubscribeHandler = pushRoutes.handleSubscribe;
 const testRoutes = require("./routes/test");
-const { verifySupabaseConnection } = require("./lib/supabase");
+const checkProfitRoutes = require("./routes/checkProfit");
+const inventoryRoutes = require("./routes/inventory");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
 chromium.use(StealthPlugin());
-
-const { startPriceScannerJob } = require("./jobs/priceScanner");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -43,14 +35,11 @@ app.use(
 
 app.use(express.json());
 
-// =========================================
-// Monitors — CRUD Supabase price_monitors
-// =========================================
-app.use("/api/monitors", monitorRoutes);
-app.use("/api/push", pushRoutes);
-/** POST /api/subscribe — cùng handler với /api/push/subscribe (PWA / iPhone) */
-app.post("/api/subscribe", pushSubscribeHandler);
 app.use("/api/diagnostics", testRoutes);
+app.use("/api/check-profit", checkProfitRoutes);
+/** Kho hàng — cùng router, hai path (frontend dùng /api/my-inventory) */
+app.use("/api/my-inventory", inventoryRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 // Lưu browser instances để cleanup
 const activeBrowsers = new Map();
@@ -219,18 +208,15 @@ process.on("uncaughtException", (err) => { console.error("Uncaught:", err); clea
 // =========================================
 // Start
 // =========================================
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log("📍 Backend đang đợi tại: GET /api/check");
   console.log(`🚀 PriceCheck Backend chạy tại http://localhost:${PORT}`);
   console.log(`📋 Gọi: GET http://localhost:${PORT}/api/check?jan=4902370553024`);
   console.log(`📊 Top: GET http://localhost:${PORT}/api/top-searches`);
-  console.log(`📌 Monitors: GET|POST http://localhost:${PORT}/api/monitors`);
   console.log(`🔧 Diagnostics: GET http://localhost:${PORT}/api/diagnostics`);
+  console.log(`💹 Check profit: POST http://localhost:${PORT}/api/check-profit`);
+  console.log(
+    `📦 Inventory: GET|PUT http://localhost:${PORT}/api/my-inventory (alias: /api/inventory)`
+  );
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
-  await verifySupabaseConnection();
-  if (process.env.DISABLE_PRICE_SCANNER !== "1") {
-    startPriceScannerJob();
-  } else {
-    console.log("⏸️  priceScanner tắt (DISABLE_PRICE_SCANNER=1)\n");
-  }
 });

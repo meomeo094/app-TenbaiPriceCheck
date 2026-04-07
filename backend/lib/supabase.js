@@ -1,71 +1,178 @@
+/**
+ * Ghi bảng my_inventory — chỉ dùng SUPABASE_SERVICE_ROLE_KEY (quyền cao nhất, không phụ thuộc RLS).
+ * Cột DB: name, jan_code, purchase_price (khớp Supabase).
+ */
 const { createClient } = require("@supabase/supabase-js");
 
-const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
-const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || "").trim();
+/** Client riêng cho ghi inventory (service role). */
+let inventoryWriteClient = null;
 
-let client = null;
-let jobsClient = null;
-
-function getSupabase() {
-  if (!supabaseUrl || !supabaseAnonKey) {
+/**
+ * @returns {import("@supabase/supabase-js").SupabaseClient | null}
+ */
+function getSupabaseInventoryWriter() {
+  const url = (process.env.SUPABASE_URL || "").trim();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!url || !key) {
     return null;
   }
-  if (!client) {
-    client = createClient(supabaseUrl, supabaseAnonKey);
+  if (!inventoryWriteClient) {
+    inventoryWriteClient = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
   }
-  return client;
+  return inventoryWriteClient;
 }
 
-/**
- * Client cho job nền (cron): ưu tiên SUPABASE_SERVICE_ROLE_KEY để bypass RLS khi cập nhật monitor.
- */
-function getSupabaseForJobs() {
-  if (!supabaseUrl) return null;
-  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  const key = serviceKey || supabaseAnonKey;
-  if (!key) return null;
-  if (!jobsClient) {
-    jobsClient = createClient(supabaseUrl, key);
-  }
-  return jobsClient;
+/** Key đang dùng (chỉ log tên biến). */
+function whichSupabaseKeyEnv() {
+  if ((process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()) return "SUPABASE_SERVICE_ROLE_KEY";
+  return "(thiếu — cần service role để ghi my_inventory)";
 }
 
-/**
- * Kiểm tra kết nối Supabase (Env + truy vấn nhẹ tới bảng price_monitors).
- * Log lỗi chi tiết nếu thất bại; không throw.
- */
-async function verifySupabaseConnection() {
-  if (!supabaseUrl) {
-    console.error(
-      "[Supabase] Kết nối thất bại: biến môi trường SUPABASE_URL không được thiết lập hoặc rỗng."
-    );
-    return false;
-  }
-  if (!supabaseAnonKey) {
-    console.error(
-      "[Supabase] Kết nối thất bại: biến môi trường SUPABASE_ANON_KEY không được thiết lập hoặc rỗng."
-    );
-    return false;
+function logSupabaseError(operation, error) {
+  if (error == null) return;
+
+  const msg = String(error.message ?? "");
+  const code = error.code != null ? String(error.code) : "";
+  const details = error.details != null ? String(error.details) : "";
+  const hint = error.hint != null ? String(error.hint) : "";
+
+  console.log(`[Supabase] THẤT BẠI — ${operation}`);
+  console.log("  message:", msg);
+  console.log("  code:   ", code || "(empty)");
+  console.log("  details:", details || "(empty)");
+  console.log("  hint:   ", hint || "(empty)");
+  console.log("  env key:", whichSupabaseKeyEnv());
+
+  let diagnosis = "";
+  const low = msg.toLowerCase();
+  if (
+    code === "42501" ||
+    low.includes("permission denied") ||
+    low.includes("row-level security") ||
+    low.includes("rls")
+  ) {
+    diagnosis =
+      "→ RLS / quyền: đảm bảo SUPABASE_SERVICE_ROLE_KEY đúng (Settings → API → service_role).";
+  } else if (
+    code === "42P01" ||
+    low.includes("does not exist") ||
+    (low.includes("column") && (low.includes("does not exist") || low.includes("schema cache")))
+  ) {
+    diagnosis =
+      "→ Sai tên cột/bảng: bảng public.my_inventory cần name, jan_code, purchase_price.";
+  } else if (
+    code === "PGRST301" ||
+    low.includes("jwt") ||
+    low.includes("invalid api key")
+  ) {
+    diagnosis = "→ Sai service_role secret — copy lại từ Supabase Dashboard.";
+  } else if (code === "23505" || low.includes("unique")) {
+    diagnosis = "→ Trùng jan_code (unique).";
   }
 
-  const supabase = getSupabase();
+  if (diagnosis) {
+    console.log("  chẩn đoán:", diagnosis);
+  }
+
+  try {
+    console.log("  error (JSON):", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+  } catch {
+    console.log("  error (raw):", error);
+  }
+}
+
+const TABLE_MY_INVENTORY = "my_inventory";
+
+/**
+ * Payload gửi lên Supabase — khớp 100% cột: name, jan_code, purchase_price.
+ * @param {Array<{ name: string, jan: string, purchase_price: number }>} rows — jan = mã JAN (map → jan_code)
+ */
+async function syncMyInventoryToSupabase(rows) {
+  /** @type {Array<{ operation: string, error: unknown }>} */
+  const errors = [];
+
+  const supabase = getSupabaseInventoryWriter();
   if (!supabase) {
-    console.error("[Supabase] Kết nối thất bại: không khởi tạo được client.");
-    return false;
+    console.warn(
+      "[Supabase] Bỏ qua ghi DB: cần SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trong backend/.env"
+    );
+    return { ok: true, skipped: true, errors: [] };
   }
 
-  const { error } = await supabase.from("price_monitors").select("id").limit(1);
+  const payload = rows.map((r) => ({
+    name: r.name ?? "",
+    jan_code: r.jan,
+    purchase_price: r.purchase_price,
+  }));
 
-  if (error) {
-    console.error("[Supabase] Kết nối / truy vấn thất bại:", error.message);
-    if (error.code) console.error("[Supabase] Mã lỗi:", error.code);
-    if (error.details) console.error("[Supabase] Chi tiết:", error.details);
-    if (error.hint) console.error("[Supabase] Gợi ý:", error.hint);
-    return false;
+  if (payload.length === 0) {
+    const { error: emptyError } = await supabase
+      .from(TABLE_MY_INVENTORY)
+      .delete()
+      .not("jan_code", "is", null);
+
+    if (emptyError) {
+      console.error("Lỗi insert Supabase:", emptyError);
+      logSupabaseError("my_inventory.delete(khi inventory rỗng)", emptyError);
+      errors.push({ operation: "delete(all)", error: emptyError });
+    }
+    return { ok: errors.length === 0, errors };
   }
 
-  console.log("[Supabase] Kết nối OK (đã thử đọc bảng price_monitors).");
-  return true;
+  const { error: upsertError } = await supabase
+    .from(TABLE_MY_INVENTORY)
+    .upsert(payload, { onConflict: "jan_code" });
+
+  if (upsertError) {
+    console.error("Lỗi insert Supabase:", upsertError);
+    logSupabaseError("my_inventory.upsert (insert/update theo jan_code)", upsertError);
+    errors.push({ operation: "upsert", error: upsertError });
+    return { ok: false, errors };
+  }
+
+  const keepCodes = new Set(rows.map((r) => r.jan));
+  const { data: existing, error: selectError } = await supabase
+    .from(TABLE_MY_INVENTORY)
+    .select("jan_code");
+
+  if (selectError) {
+    console.error("Lỗi insert Supabase:", selectError);
+    logSupabaseError("my_inventory.select(jan_code)", selectError);
+    errors.push({ operation: "select(jan_code)", error: selectError });
+    return { ok: false, errors };
+  }
+
+  const toDelete = (existing || [])
+    .map((row) => row.jan_code)
+    .filter((code) => code && !keepCodes.has(code));
+
+  for (const janCode of toDelete) {
+    const { error: deleteError } = await supabase
+      .from(TABLE_MY_INVENTORY)
+      .delete()
+      .eq("jan_code", janCode);
+
+    if (deleteError) {
+      console.error("Lỗi insert Supabase:", deleteError);
+      logSupabaseError(`my_inventory.delete(jan_code=${janCode})`, deleteError);
+      errors.push({ operation: `delete(jan_code=${janCode})`, error: deleteError });
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
-module.exports = { getSupabase, getSupabaseForJobs, verifySupabaseConnection };
+/** Giữ export để mở rộng (đọc metadata, v.v.) — cũng dùng service role nếu có. */
+function getSupabase() {
+  return getSupabaseInventoryWriter();
+}
+
+module.exports = {
+  getSupabase,
+  getSupabaseInventoryWriter,
+  syncMyInventoryToSupabase,
+  logSupabaseError,
+  TABLE_MY_INVENTORY,
+};

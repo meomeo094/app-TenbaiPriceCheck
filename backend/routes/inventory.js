@@ -1,0 +1,125 @@
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { syncMyInventoryToSupabase } = require("../lib/supabase");
+
+const router = express.Router();
+
+const INVENTORY_FILE = path.join(__dirname, "..", "my_inventory.json");
+
+function readFile() {
+  if (!fs.existsSync(INVENTORY_FILE)) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(INVENTORY_FILE, "utf8"));
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeFile(rows) {
+  fs.writeFileSync(INVENTORY_FILE, JSON.stringify(rows, null, 2), "utf8");
+}
+
+/**
+ * GET /api/my-inventory — đọc bảng (file my_inventory.json).
+ */
+router.get("/", (req, res) => {
+  res.json({ inventory: readFile() });
+});
+
+/**
+ * PUT /api/my-inventory — ghi đè toàn bộ danh sách.
+ * Body: { inventory: [ { id?, name, jan, purchase_price } ] } — jan được map sang jan_code trên Supabase.
+ */
+router.put("/", async (req, res) => {
+  console.log("Dữ liệu nhận được từ FE:", req.body);
+
+  const inv = req.body?.inventory;
+  if (!Array.isArray(inv)) {
+    return res.status(400).json({ error: "Thiếu hoặc sai định dạng inventory (mảng)." });
+  }
+
+  const out = [];
+  for (let i = 0; i < inv.length; i++) {
+    const row = inv[i];
+    const jan = String(row.jan ?? "").trim();
+    const name = row.name != null ? String(row.name).trim() : "";
+    const purchaseRaw = row.purchase_price;
+    const purchase =
+      typeof purchaseRaw === "number" ? purchaseRaw : parseInt(String(purchaseRaw ?? ""), 10);
+
+    if (!/^\d{8,14}$/.test(jan)) {
+      return res.status(400).json({
+        error: `Dòng ${i + 1}: mã JAN không hợp lệ (8–14 chữ số).`,
+        jan,
+      });
+    }
+    if (!Number.isFinite(purchase) || purchase < 0) {
+      return res.status(400).json({
+        error: `Dòng ${i + 1}: giá mua không hợp lệ.`,
+        jan,
+      });
+    }
+
+    const id =
+      row.id && String(row.id).trim()
+        ? String(row.id).trim()
+        : crypto.randomUUID();
+
+    out.push({
+      id,
+      name,
+      jan,
+      purchase_price: purchase,
+    });
+  }
+
+  writeFile(out);
+
+  try {
+    const syncResult = await syncMyInventoryToSupabase(out);
+
+    if (syncResult.skipped) {
+      console.log(
+        "[inventory] Supabase: bỏ qua đồng bộ (thiếu SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY trong .env)."
+      );
+    } else if (syncResult.ok) {
+      console.log("[inventory] Thành công: đã đồng bộ dữ liệu lên Supabase (bảng my_inventory, cột name / jan_code / purchase_price).");
+    } else if (!syncResult.ok) {
+      console.log(
+        "[inventory] Đồng bộ Supabase không thành công — chi tiết từng lỗi đã in ở block [Supabase] phía trên."
+      );
+      console.log(
+        "[inventory] Số lỗi:",
+        syncResult.errors?.length ?? 0,
+        "| Tóm tắt (operation + message):"
+      );
+      for (const item of syncResult.errors ?? []) {
+        const err = item.error;
+        console.error("Lỗi insert Supabase:", err);
+        const msg = err && typeof err === "object" && "message" in err ? err.message : String(err);
+        console.log("  -", item.operation, "→", msg);
+        if (err && typeof err === "object") {
+          console.log(
+            "[inventory] full error object:",
+            JSON.stringify(err, Object.getOwnPropertyNames(err))
+          );
+        } else {
+          console.log("[inventory] full error:", err);
+        }
+      }
+    }
+  } catch (e) {
+    console.log("[inventory] Exception khi gọi syncMyInventoryToSupabase:", e?.message);
+    console.log(e?.stack);
+    if (e && typeof e === "object") {
+      console.log("[inventory] Exception (JSON):", JSON.stringify(e, Object.getOwnPropertyNames(e)));
+    }
+  }
+
+  res.json({ ok: true, inventory: out });
+});
+
+module.exports = router;

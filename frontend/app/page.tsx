@@ -120,10 +120,10 @@ export default function Home() {
           <p className="text-slate-400 text-xs">Kiểm tra giá thu mua tại Nhật</p>
         </div>
         <Link
-          href="/my-inventory"
+          href="/inventory"
           className="shrink-0 rounded-xl bg-slate-800 px-3 py-2 text-sm font-medium text-indigo-300 active:bg-slate-700 touch-manipulation"
         >
-          Kho hàng
+          Kho &amp; lãi
         </Link>
       </header>
 

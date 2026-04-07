@@ -6,7 +6,9 @@
  * Result card: .commodity-item
  *   - Tên SP: text node đầu tiên trong card (skip JAN/¥/badge labels)
  *   - Giá: span.text-right.text-sm → "¥8,900"
- *   - Product link: /product/{uuid} — uuid lấy từ image src /api/file/image/{uuid}.ext
+ *
+ * Link trả về luôn là trang tìm theo JAN (đồng bộ với nút Xem / chia sẻ):
+ *   /elec/search?q={jan}
  */
 
 const SITE_NAME = "1-chome";
@@ -14,11 +16,22 @@ const BASE_URL = "https://www.1-chome.com";
 const SEARCH_URL = `${BASE_URL}/index`;
 
 /**
+ * @param {string} janCode
+ * @returns {string}
+ */
+function ichomeSearchUrl(janCode) {
+  const q = encodeURIComponent(String(janCode).trim());
+  return `${BASE_URL}/elec/search?q=${q}`;
+}
+
+/**
  * @param {import('playwright').Page} page
  * @param {string} janCode
  * @returns {Promise<{site: string, name: string|null, price: string|null, link: string, status: string}>}
  */
 async function scrapeIchome(page, janCode) {
+  const publicLink = ichomeSearchUrl(janCode);
+
   try {
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
     await page.waitForTimeout(1500);
@@ -40,8 +53,6 @@ async function scrapeIchome(page, janCode) {
     await page.waitForURL("**/searchResult*", { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(2500);
 
-    const currentUrl = page.url();
-
     const noResult = await page
       .locator("text=見つかりませんでした, text=検索結果がありません, text=0件の商品")
       .first()
@@ -49,21 +60,17 @@ async function scrapeIchome(page, janCode) {
       .catch(() => false);
 
     if (noResult) {
-      return { site: SITE_NAME, name: null, price: null, link: currentUrl, status: "not_found" };
+      return { site: SITE_NAME, name: null, price: null, link: publicLink, status: "not_found" };
     }
 
-    const result = await page.evaluate((args) => {
-      const { base } = args;
+    const result = await page.evaluate(() => {
       const SKIP = new Set(["新品", "中古", "強化", "未使用", "カートに入れる", "注意事項"]);
 
-      // === Lấy tên + giá + link từ thẻ kết quả đầu tiên ===
       const cards = document.querySelectorAll(".commodity-item");
       let name = null;
       let price = null;
-      let productLink = null;
 
       for (const card of cards) {
-        // --- Tên SP: text node đầu tiên có nghĩa ---
         if (!name) {
           const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
           let node;
@@ -76,19 +83,6 @@ async function scrapeIchome(page, janCode) {
           }
         }
 
-        // --- Product link: uuid từ image src /api/file/image/{uuid}.ext ---
-        if (!productLink) {
-          const img = card.querySelector("img.commodity-image, img[src*='/api/file/image/']");
-          if (img) {
-            const src = img.getAttribute("src") || img.src || "";
-            const m = src.match(/\/api\/file\/image\/([a-f0-9-]{36})/i);
-            if (m) {
-              productLink = `${base}/product/${m[1]}`;
-            }
-          }
-        }
-
-        // --- Giá cao nhất trong card ---
         const priceSpans = card.querySelectorAll("span.text-right.text-sm");
         for (const span of priceSpans) {
           const text = span.textContent?.trim();
@@ -103,19 +97,15 @@ async function scrapeIchome(page, janCode) {
         if (name && price) break;
       }
 
-      return { name, price, productLink };
-    }, { base: BASE_URL });
-
-    if (result.productLink) {
-      console.log(`🔗 Link 1-chome cho nút Xem: ${result.productLink}`);
-    }
+      return { name, price };
+    });
 
     if (!result.price) {
       return {
         site: SITE_NAME,
         name: result.name,
         price: null,
-        link: result.productLink || currentUrl,
+        link: publicLink,
         status: "not_found",
       };
     }
@@ -124,13 +114,13 @@ async function scrapeIchome(page, janCode) {
       site: SITE_NAME,
       name: result.name,
       price: result.price,
-      link: result.productLink || currentUrl,
+      link: publicLink,
       status: "success",
     };
   } catch (err) {
     console.error(`[${SITE_NAME}] Lỗi:`, err.message);
-    return { site: SITE_NAME, name: null, price: null, link: SEARCH_URL, status: "error" };
+    return { site: SITE_NAME, name: null, price: null, link: publicLink, status: "error" };
   }
 }
 
-module.exports = { scrapeIchome };
+module.exports = { scrapeIchome, ichomeSearchUrl };
