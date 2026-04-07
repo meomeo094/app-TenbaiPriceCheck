@@ -27,14 +27,19 @@ function isIosStandalone(): boolean {
   return Boolean(nav.standalone);
 }
 
+type StepLogger = (line: string) => void;
+
 /**
- * Đăng ký Web Push: chuyển VAPID public key (base64url) từ API sang Uint8Array rồi gọi subscribe.
+ * Đăng ký Web Push: convert VAPID (base64url) → Uint8Array, rồi pushManager.subscribe.
  */
 async function subscribeUser(
   registration: ServiceWorkerRegistration,
-  vapidPublicKeyFromApi: string
+  vapidPublicKeyFromApi: string,
+  log: StepLogger
 ): Promise<PushSubscription> {
+  log("Convert key VAPID → Uint8Array…");
   const applicationServerKey = urlBase64ToUint8Array(vapidPublicKeyFromApi) as unknown as Uint8Array as BufferSource;
+  log(`Đã convert (${applicationServerKey.byteLength} byte). Đang đăng ký push…`);
   return registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey,
@@ -46,7 +51,12 @@ type UiState = "idle" | "loading" | "success" | "error";
 export default function PushNotificationManager({ className = "" }: { className?: string }) {
   const [state, setState] = useState<UiState>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [stepLog, setStepLog] = useState<string[]>([]);
   const [standalone, setStandalone] = useState(false);
+
+  const appendLog = useCallback((line: string) => {
+    setStepLog((prev) => [...prev, `${new Date().toLocaleTimeString()}  ${line}`]);
+  }, []);
 
   useEffect(() => {
     setStandalone(isIosStandalone());
@@ -54,6 +64,7 @@ export default function PushNotificationManager({ className = "" }: { className?
 
   const enablePush = useCallback(async () => {
     setMessage(null);
+    setStepLog([]);
     setState("loading");
 
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
@@ -81,6 +92,7 @@ export default function PushNotificationManager({ className = "" }: { className?
     }
 
     try {
+      appendLog("Bắt đầu (user gesture từ nút).");
       // requestPermission phải gọi trực tiếp trong user gesture (click) — Safari yêu cầu điều này.
       let perm: NotificationPermission;
       try {
@@ -92,6 +104,7 @@ export default function PushNotificationManager({ className = "" }: { className?
         );
       }
       if (perm !== "granted") {
+        appendLog(`Quyền thông báo: ${perm}`);
         setState("error");
         setMessage(
           perm === "denied"
@@ -100,27 +113,40 @@ export default function PushNotificationManager({ className = "" }: { className?
         );
         return;
       }
+      appendLog("Quyền thông báo: granted.");
 
+      appendLog("GET VAPID public key (API)…");
       const vapid = await fetchVapidPublicKey();
       if (!vapid.configured || !vapid.publicKey) {
+        appendLog(`Lỗi VAPID: ${vapid.error ?? "—"}`);
         setState("error");
         setMessage(vapid.error || "Backend chưa cấu hình VAPID. Kiểm tra .env máy chủ.");
         return;
       }
+      appendLog("Đã nhận publicKey từ API.");
 
+      appendLog("Đăng ký / chờ Service Worker sẵn sàng…");
       const reg = await getOrRegisterServiceWorker();
-      const sub = await subscribeUser(reg, vapid.publicKey);
+      await navigator.serviceWorker.ready;
+      appendLog(`SW active: ${reg.active?.scriptURL ?? "—"}`);
 
+      const sub = await subscribeUser(reg, vapid.publicKey, appendLog);
+      appendLog("Đã subscribe push (endpoint OK).");
+
+      appendLog("POST /api/push/subscribe (header ngrok-skip-browser-warning)…");
       await postPushSubscription(sub.toJSON());
+      appendLog("Đã gửi subscription lên backend.");
+
       setState("success");
       setMessage("✓ Đã bật thông báo và lưu subscription thành công.");
     } catch (e) {
       console.error("[PushNotificationManager]", e);
+      appendLog(`Lỗi: ${e instanceof Error ? e.message : String(e)}`);
       setState("error");
       const msg = e instanceof Error ? e.message : String(e);
       setMessage(`Lỗi đăng ký: ${msg}`);
     }
-  }, []);
+  }, [appendLog]);
 
   return (
     <section
@@ -152,6 +178,17 @@ export default function PushNotificationManager({ className = "" }: { className?
         >
           {message}
         </p>
+      ) : null}
+
+      {stepLog.length > 0 ? (
+        <div className="mt-3 rounded-xl border border-slate-700/80 bg-slate-950/60 p-3 max-h-48 overflow-y-auto">
+          <p className="text-slate-500 text-[10px] font-medium uppercase tracking-wide mb-1.5">
+            Nhật ký bước (iPhone)
+          </p>
+          <pre className="text-[11px] leading-relaxed text-slate-400 font-mono whitespace-pre-wrap break-all">
+            {stepLog.join("\n")}
+          </pre>
+        </div>
       ) : null}
     </section>
   );

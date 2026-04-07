@@ -1,4 +1,4 @@
-/* Service Worker — xử lý Web Push (được import bởi sw.js / pwa-sw.js hoặc dev sw.js) */
+/* Service Worker — Web Push + mở link (được import bởi public/sw.js và pwa-sw.js sau build) */
 self.addEventListener("push", (event) => {
   let title = "PriceCheck";
   let body = "Có cập nhật giá hoặc thông báo mới.";
@@ -9,7 +9,15 @@ self.addEventListener("push", (event) => {
       const json = event.data.json();
       if (json.title) title = String(json.title);
       if (json.body) body = String(json.body);
-      if (json.url) url = String(json.url);
+      const link =
+        json.url != null
+          ? String(json.url)
+          : json.product_url != null
+            ? String(json.product_url)
+            : json.link != null
+              ? String(json.link)
+              : "";
+      if (link) url = link;
     } catch {
       const text = event.data.text();
       if (text) body = text;
@@ -30,8 +38,10 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const path = event.notification.data?.url || "/";
-  const targetUrl = new URL(path, self.location.origin).href;
+  const raw = event.notification.data?.url || "/";
+  const targetUrl = /^https?:\/\//i.test(raw)
+    ? raw
+    : new URL(raw, self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
