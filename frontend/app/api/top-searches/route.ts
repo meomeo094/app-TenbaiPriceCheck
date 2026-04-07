@@ -21,7 +21,11 @@ export async function GET() {
 
   try {
     const upstream = await fetch(target, {
-      headers: { Accept: "application/json", "ngrok-skip-browser-warning": "true" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
       cache: "no-store",
     });
     const body = await upstream.text();

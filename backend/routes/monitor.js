@@ -1,3 +1,4 @@
+/** CORS (origin *, ngrok-skip-browser-warning) được cấu hình trong server.js, áp dụng cho mọi route. */
 const express = require("express");
 const { getSupabase } = require("../lib/supabase");
 

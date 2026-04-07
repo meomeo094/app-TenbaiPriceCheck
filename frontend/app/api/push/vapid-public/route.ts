@@ -22,6 +22,7 @@ export async function GET() {
     const upstream = await fetch(target, {
       headers: {
         Accept: "application/json",
+        "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
       },
       cache: "no-store",
@@ -33,6 +34,6 @@ export async function GET() {
     });
   } catch (err) {
     console.error("[proxy push vapid-public]", err);
-    return NextResponse.json({ configured: false, error: "Không kết nối backend" }, { status: 502 });
+    return NextResponse.json({ error: "Không kết nối backend" }, { status: 502 });
   }
 }

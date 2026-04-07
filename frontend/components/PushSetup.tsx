@@ -81,10 +81,10 @@ export default function PushSetup({ className = "" }: { className?: string }) {
       }
 
       const reg = await getOrRegisterServiceWorker();
-      const keyBytes = urlBase64ToUint8Array(vapid.publicKey);
+      const applicationServerKey = urlBase64ToUint8Array(vapid.publicKey);
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: new Uint8Array(keyBytes),
+        applicationServerKey,
       });
 
       await postPushSubscription(sub.toJSON());

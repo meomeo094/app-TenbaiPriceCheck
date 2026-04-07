@@ -179,9 +179,9 @@ async function saveSubscription(subscription) {
 function getPublicVapidJsonResponse() {
   const publicKey = (process.env.VAPID_PUBLIC_KEY || "").trim();
   if (!publicKey) {
-    return { configured: false, error: "Chưa cấu hình VAPID_PUBLIC_KEY." };
+    return { error: "Chưa cấu hình VAPID_PUBLIC_KEY." };
   }
-  return { configured: true, publicKey };
+  return { publicKey };
 }
 
 async function removeSubscriptionEndpoint(endpoint) {

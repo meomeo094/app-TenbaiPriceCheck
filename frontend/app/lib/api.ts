@@ -20,6 +20,7 @@ export interface TopSearch {
 
 export const API_REQUEST_HEADERS: HeadersInit = {
   Accept: "application/json",
+  "Content-Type": "application/json",
   "ngrok-skip-browser-warning": "true",
 };
 
@@ -41,6 +42,7 @@ export async function apiFetch(
     new Headers(init.headers).forEach((v, k) => mergedHeaders.set(k, v));
   }
   mergedHeaders.set("ngrok-skip-browser-warning", "true");
+  mergedHeaders.set("Content-Type", mergedHeaders.get("Content-Type") || "application/json");
 
   return fetch(finalUrl, { ...init, headers: mergedHeaders });
 }
@@ -122,11 +124,16 @@ export async function fetchVapidPublicKey(): Promise<{
   error?: string;
 }> {
   const response = await apiFetch("/api/push/vapid-public-key", { method: "GET" });
-  return response.json() as Promise<{
-    configured: boolean;
-    publicKey?: string;
-    error?: string;
-  }>;
+  const data = (await response.json()) as { publicKey?: string; error?: string };
+  const publicKey =
+    typeof data.publicKey === "string" ? data.publicKey.replace(/\s/g, "").trim() : "";
+  if (publicKey) {
+    return { configured: true, publicKey };
+  }
+  return {
+    configured: false,
+    error: typeof data.error === "string" ? data.error : "Không có VAPID public key",
+  };
 }
 
 export async function postPushSubscription(subscription: object): Promise<void> {
@@ -141,14 +148,26 @@ export async function postPushSubscription(subscription: object): Promise<void> 
   }
 }
 
-/** Chuẩn hóa VAPID public key (base64url) → Uint8Array cho PushManager.subscribe */
+/**
+ * Base64URL (VAPID) → Uint8Array cho `PushManager.subscribe({ applicationServerKey })`.
+ * Base64URL: `-` → `+`, `_` → `/`, thêm padding `=` khi cần.
+ */
 export function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  let s = base64String.trim().replace(/^["']|["']$/g, "");
+  const dataUrl = /^data:[^;]+;base64,(.+)$/i.exec(s);
+  if (dataUrl) s = dataUrl[1];
+  s = s.replace(/\s/g, "");
+  const padding = "=".repeat((4 - (s.length % 4)) % 4);
+  const base64 = (s + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
   const out = new Uint8Array(rawData.length);
   for (let i = 0; i < rawData.length; i++) {
     out[i] = rawData.charCodeAt(i);
+  }
+  if (out.length !== 65) {
+    throw new Error(
+      `VAPID public key không hợp lệ (sau giải mã: ${out.length} byte, cần 65). Kiểm tra base64url trên server.`
+    );
   }
   return out;
 }

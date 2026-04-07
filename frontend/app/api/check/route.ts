@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
       method: "GET",
       headers: {
         Accept: "application/json",
+        "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
       },
       cache: "no-store",
