@@ -40,9 +40,7 @@ export async function GET() {
       {
         ok: false,
         timestamp: new Date().toISOString(),
-        supabase: { ok: false, detail: "Không kết nối backend" },
-        vapid: { ok: false, detail: "—" },
-        playwright: { ok: false, detail: "—" },
+        playwright: { ok: false, detail: "Không kết nối backend" },
       },
       { status: 502 }
     );

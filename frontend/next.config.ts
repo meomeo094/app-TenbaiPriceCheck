@@ -11,7 +11,6 @@ const withPWAConfig = withPWA({
   extendDefaultRuntimeCaching: true,
   workboxOptions: {
     disableDevLogs: true,
-    importScripts: ["/web-push-handlers.js"],
     runtimeCaching: [
       {
         urlPattern: ({ url }) => url.pathname.startsWith("/api/"),

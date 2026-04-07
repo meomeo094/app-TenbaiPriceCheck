@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { checkPrice, CheckPriceResponse, PriceResult } from "./lib/api";
@@ -119,12 +118,6 @@ export default function Home() {
           <h1 className="text-white font-bold text-lg leading-tight">PriceCheck</h1>
           <p className="text-slate-400 text-xs">Kiểm tra giá thu mua tại Nhật</p>
         </div>
-        <Link
-          href="/monitor"
-          className="shrink-0 rounded-xl bg-slate-800 px-3 py-2 text-sm font-medium text-indigo-300 active:bg-slate-700 touch-manipulation"
-        >
-          Theo dõi giá
-        </Link>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-12 pt-5 max-w-lg mx-auto w-full">

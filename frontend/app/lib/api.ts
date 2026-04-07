@@ -71,129 +71,9 @@ export async function getTopSearches(): Promise<TopSearch[]> {
   }
 }
 
-export interface PriceMonitorRow {
-  id?: number | string;
-  product_url: string;
-  target_price: number;
-  interval_min: number;
-  notification_channel?: string;
-}
-
-export async function listMonitors(): Promise<PriceMonitorRow[]> {
-  const response = await apiFetch("/api/monitors", { method: "GET" });
-  if (!response.ok) {
-    const t = await response.text();
-    throw new Error(`Danh sách monitor lỗi ${response.status}: ${t}`);
-  }
-  const data = await response.json() as { monitors?: PriceMonitorRow[] };
-  return data.monitors ?? [];
-}
-
-export async function createMonitor(payload: {
-  product_url: string;
-  target_price: number;
-  interval_min: number;
-  notification_channel?: string;
-}): Promise<PriceMonitorRow> {
-  const response = await apiFetch("/api/monitors", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      product_url: payload.product_url,
-      target_price: payload.target_price,
-      interval_min: payload.interval_min,
-      notification_channel: payload.notification_channel ?? "push",
-    }),
-  });
-  const data = (await response.json().catch(() => ({}))) as {
-    monitor?: PriceMonitorRow;
-    error?: string;
-    details?: string;
-  };
-  if (!response.ok) {
-    throw new Error(data.error || data.details || `Lỗi ${response.status}`);
-  }
-  if (!data.monitor) {
-    throw new Error("Phản hồi không có monitor");
-  }
-  return data.monitor;
-}
-
-export async function fetchVapidPublicKey(): Promise<{
-  configured: boolean;
-  publicKey?: string;
-  error?: string;
-}> {
-  let response: Response;
-  try {
-    response = await apiFetch("/api/push/vapid-public", { method: "GET" });
-  } catch {
-    return { configured: false, error: "Không kết nối được tới proxy VAPID. Kiểm tra mạng." };
-  }
-
-  let data: { publicKey?: string; error?: string };
-  try {
-    data = (await response.json()) as { publicKey?: string; error?: string };
-  } catch {
-    const statusHint = response.status !== 200 ? ` (HTTP ${response.status})` : "";
-    return {
-      configured: false,
-      error: `Proxy trả về nội dung không hợp lệ${statusHint}. Kiểm tra BACKEND_URL / Ngrok đang chạy.`,
-    };
-  }
-
-  const publicKey =
-    typeof data.publicKey === "string" ? data.publicKey.replace(/\s/g, "").trim() : "";
-  if (publicKey) {
-    return { configured: true, publicKey };
-  }
-  return {
-    configured: false,
-    error: typeof data.error === "string" ? data.error : "Backend chưa trả về VAPID public key.",
-  };
-}
-
-export async function postPushSubscription(subscription: object): Promise<void> {
-  const response = await apiFetch("/api/push/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ subscription }),
-  });
-  if (!response.ok) {
-    const t = await response.text();
-    throw new Error(`Lưu subscription lỗi ${response.status}: ${t}`);
-  }
-}
-
-/**
- * Base64URL (VAPID) → Uint8Array cho `PushManager.subscribe({ applicationServerKey })`.
- * Base64URL: `-` → `+`, `_` → `/`, thêm padding `=` khi cần.
- */
-export function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  let s = base64String.trim().replace(/^["']|["']$/g, "");
-  const dataUrl = /^data:[^;]+;base64,(.+)$/i.exec(s);
-  if (dataUrl) s = dataUrl[1];
-  s = s.replace(/\s/g, "");
-  const padding = "=".repeat((4 - (s.length % 4)) % 4);
-  const base64 = (s + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  if (outputArray.length !== 65) {
-    throw new Error(
-      `VAPID public key không hợp lệ (sau giải mã: ${outputArray.length} byte, cần 65). Kiểm tra base64url trên server.`
-    );
-  }
-  return new Uint8Array(outputArray) as any;
-}
-
 export interface DiagnosticsResponse {
   ok: boolean;
   timestamp: string;
-  supabase: { ok: boolean; detail?: string };
-  vapid: { ok: boolean; detail?: string };
   playwright: { ok: boolean; detail?: string };
 }
 
@@ -204,26 +84,6 @@ export async function fetchDiagnostics(): Promise<DiagnosticsResponse> {
     throw new Error("Không đọc được diagnostics");
   }
   return data;
-}
-
-export interface TestPushResponse {
-  ok: boolean;
-  detail?: string;
-  sent?: number;
-  failed?: number;
-}
-
-export async function postDiagnosticsTestPush(): Promise<TestPushResponse> {
-  const response = await apiFetch("/api/diagnostics/test-push", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  const data = (await response.json().catch(() => ({}))) as TestPushResponse;
-  if (!response.ok && data.detail == null && data.ok == null) {
-    throw new Error(`Lỗi ${response.status}`);
-  }
-  return { ok: Boolean(data.ok), detail: data.detail, sent: data.sent, failed: data.failed };
 }
 
 /*
