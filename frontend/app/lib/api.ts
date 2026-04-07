@@ -86,6 +86,76 @@ export async function fetchDiagnostics(): Promise<DiagnosticsResponse> {
   return data;
 }
 
+/** Một dòng tương ứng bảng my_inventory (JAN + giá mua vào). */
+export interface InventoryRowInput {
+  jan: string;
+  purchase_price: number;
+  name?: string | null;
+}
+
+/** Dòng lưu trên server (file my_inventory.json). */
+export interface MyInventoryRow {
+  id: string;
+  name: string;
+  jan: string;
+  purchase_price: number;
+}
+
+export async function getMyInventory(): Promise<MyInventoryRow[]> {
+  const response = await apiFetch("/api/my-inventory", { method: "GET" });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`my-inventory ${response.status}: ${t}`);
+  }
+  const data = (await response.json()) as { inventory?: MyInventoryRow[] };
+  return data.inventory ?? [];
+}
+
+export async function saveMyInventory(inventory: MyInventoryRow[]): Promise<MyInventoryRow[]> {
+  const response = await apiFetch("/api/my-inventory", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inventory }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`my-inventory ${response.status}: ${text}`);
+  }
+  const data = JSON.parse(text) as { inventory?: MyInventoryRow[] };
+  return data.inventory ?? [];
+}
+
+export interface CheckProfitRow {
+  jan: string;
+  name: string | null;
+  purchase_price: number | null;
+  max_kaitori_price: number | null;
+  max_price_site: string | null;
+  link: string | null;
+  profit: number | null;
+  error?: string;
+}
+
+export interface CheckProfitResponse {
+  timestamp: string;
+  results: CheckProfitRow[];
+}
+
+export async function checkProfit(
+  inventory: InventoryRowInput[]
+): Promise<CheckProfitResponse> {
+  const response = await apiFetch("/api/check-profit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inventory }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`check-profit ${response.status}: ${text}`);
+  }
+  return JSON.parse(text) as CheckProfitResponse;
+}
+
 /*
  * Self-check: route khớp 100%
  * Backend  server.js     : app.get("/api/check", ...)
@@ -96,4 +166,5 @@ export async function fetchDiagnostics(): Promise<DiagnosticsResponse> {
  * Test nhanh từ DevTools:
  *   fetch("/api/check?jan=4902370553024").then(r=>r.json()).then(console.log)
  *   fetch("/api/top-searches").then(r=>r.json()).then(console.log)
+ *   fetch("/api/check-profit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({inventory:[{jan:"4902370553024",purchase_price:1000}]})}).then(r=>r.json()).then(console.log)
  */
