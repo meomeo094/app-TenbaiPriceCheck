@@ -27,6 +27,20 @@ function isIosStandalone(): boolean {
   return Boolean(nav.standalone);
 }
 
+/**
+ * Đăng ký Web Push: chuyển VAPID public key (base64url) từ API sang Uint8Array rồi gọi subscribe.
+ */
+async function subscribeUser(
+  registration: ServiceWorkerRegistration,
+  vapidPublicKeyFromApi: string
+): Promise<PushSubscription> {
+  const applicationServerKey = urlBase64ToUint8Array(vapidPublicKeyFromApi) as unknown as Uint8Array as BufferSource;
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey,
+  });
+}
+
 type UiState = "idle" | "loading" | "success" | "error";
 
 export default function PushNotificationManager({ className = "" }: { className?: string }) {
@@ -54,45 +68,57 @@ export default function PushNotificationManager({ className = "" }: { className?
       return;
     }
 
-    const iosHint =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-      !(window.navigator as Navigator & { standalone?: boolean }).standalone;
-    if (iosHint) {
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandaloneNow = Boolean(
+      (window.navigator as Navigator & { standalone?: boolean }).standalone
+    );
+    if (isIos && !isStandaloneNow) {
       setState("error");
       setMessage(
-        "Trên iPhone, hãy Thêm vào Màn hình chính (Safari → Chia sẻ) rồi mở app từ icon để bật thông báo đẩy."
+        "Trên iPhone, hãy Thêm vào Màn hình chính (Safari → Chia sẻ ↑) rồi mở app từ icon để bật thông báo đẩy."
       );
       return;
     }
 
     try {
-      const vapid = await fetchVapidPublicKey();
-      if (!vapid.configured || !vapid.publicKey) {
+      // requestPermission phải gọi trực tiếp trong user gesture (click) — Safari yêu cầu điều này.
+      let perm: NotificationPermission;
+      try {
+        perm = await Notification.requestPermission();
+      } catch {
+        // Một số trình duyệt cũ dùng callback thay vì Promise
+        perm = await new Promise<NotificationPermission>((resolve) =>
+          Notification.requestPermission(resolve)
+        );
+      }
+      if (perm !== "granted") {
         setState("error");
-        setMessage(vapid.error || "Backend chưa cấu hình VAPID_PUBLIC_KEY. Kiểm tra .env máy chủ.");
+        setMessage(
+          perm === "denied"
+            ? "Bạn đã chặn thông báo. Vào Cài đặt → Safari/Chrome → Thông báo để mở lại."
+            : "Bạn chưa cho phép thông báo. Vui lòng nhấn Cho phép khi được hỏi."
+        );
         return;
       }
 
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
+      const vapid = await fetchVapidPublicKey();
+      if (!vapid.configured || !vapid.publicKey) {
         setState("error");
-        setMessage("Bạn chưa cho phép thông báo. Vào Cài đặt → Safari → Thông báo nếu cần.");
+        setMessage(vapid.error || "Backend chưa cấu hình VAPID. Kiểm tra .env máy chủ.");
         return;
       }
 
       const reg = await getOrRegisterServiceWorker();
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapid.publicKey) as unknown as Uint8Array<ArrayBuffer>,
-      });
+      const sub = await subscribeUser(reg, vapid.publicKey);
 
       await postPushSubscription(sub.toJSON());
       setState("success");
-      setMessage("Đã bật thông báo và lưu subscription trên máy chủ.");
+      setMessage("✓ Đã bật thông báo và lưu subscription thành công.");
     } catch (e) {
       console.error("[PushNotificationManager]", e);
       setState("error");
-      setMessage(e instanceof Error ? e.message : "Không thể đăng ký thông báo đẩy.");
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessage(`Lỗi đăng ký: ${msg}`);
     }
   }, []);
 

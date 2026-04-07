@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "endpoint": "https://test.push.services.mozilla.com/wpush/v2/test",
+    "keys": {
+      "p256dh": "BGlNZoHlkQ",
+      "auth": "testauth"
+    }
+  }
+]

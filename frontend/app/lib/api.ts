@@ -18,10 +18,11 @@ export interface TopSearch {
   count: number;
 }
 
+/** Mọi request tới API (proxy/backend): tránh trang cảnh báo Ngrok làm hỏng JSON + body JSON. */
 export const API_REQUEST_HEADERS: HeadersInit = {
-  Accept: "application/json",
   "Content-Type": "application/json",
   "ngrok-skip-browser-warning": "true",
+  Accept: "application/json",
 };
 
 /** fetch same-origin path (or absolute URL). Luôn kèm Ngrok header. */
@@ -123,8 +124,24 @@ export async function fetchVapidPublicKey(): Promise<{
   publicKey?: string;
   error?: string;
 }> {
-  const response = await apiFetch("/api/push/vapid-public-key", { method: "GET" });
-  const data = (await response.json()) as { publicKey?: string; error?: string };
+  let response: Response;
+  try {
+    response = await apiFetch("/api/push/vapid-public", { method: "GET" });
+  } catch {
+    return { configured: false, error: "Không kết nối được tới proxy VAPID. Kiểm tra mạng." };
+  }
+
+  let data: { publicKey?: string; error?: string };
+  try {
+    data = (await response.json()) as { publicKey?: string; error?: string };
+  } catch {
+    const statusHint = response.status !== 200 ? ` (HTTP ${response.status})` : "";
+    return {
+      configured: false,
+      error: `Proxy trả về nội dung không hợp lệ${statusHint}. Kiểm tra BACKEND_URL / Ngrok đang chạy.`,
+    };
+  }
+
   const publicKey =
     typeof data.publicKey === "string" ? data.publicKey.replace(/\s/g, "").trim() : "";
   if (publicKey) {
@@ -132,7 +149,7 @@ export async function fetchVapidPublicKey(): Promise<{
   }
   return {
     configured: false,
-    error: typeof data.error === "string" ? data.error : "Không có VAPID public key",
+    error: typeof data.error === "string" ? data.error : "Backend chưa trả về VAPID public key.",
   };
 }
 
@@ -152,7 +169,7 @@ export async function postPushSubscription(subscription: object): Promise<void> 
  * Base64URL (VAPID) → Uint8Array cho `PushManager.subscribe({ applicationServerKey })`.
  * Base64URL: `-` → `+`, `_` → `/`, thêm padding `=` khi cần.
  */
-export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   let s = base64String.trim().replace(/^["']|["']$/g, "");
   const dataUrl = /^data:[^;]+;base64,(.+)$/i.exec(s);
   if (dataUrl) s = dataUrl[1];
@@ -160,17 +177,16 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuf
   const padding = "=".repeat((4 - (s.length % 4)) % 4);
   const base64 = (s + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
-  const out = new Uint8Array(rawData.length);
+  const outputArray = new Uint8Array(rawData.length);
   for (let i = 0; i < rawData.length; i++) {
-    out[i] = rawData.charCodeAt(i);
+    outputArray[i] = rawData.charCodeAt(i);
   }
-  if (out.length !== 65) {
+  if (outputArray.length !== 65) {
     throw new Error(
-      `VAPID public key không hợp lệ (sau giải mã: ${out.length} byte, cần 65). Kiểm tra base64url trên server.`
+      `VAPID public key không hợp lệ (sau giải mã: ${outputArray.length} byte, cần 65). Kiểm tra base64url trên server.`
     );
   }
-  // Bản sao buffer tách biệt — ArrayBuffer cố định, khớp BufferSource / PushManager (không dùng SharedArrayBuffer).
-  return new Uint8Array(out) as Uint8Array<ArrayBuffer>;
+  return new Uint8Array(outputArray) as any;
 }
 
 export interface DiagnosticsResponse {
