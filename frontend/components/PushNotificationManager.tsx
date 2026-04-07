@@ -11,13 +11,41 @@ function serviceWorkerScriptPath(): string {
   return process.env.NODE_ENV === "production" ? "/pwa-sw.js" : "/sw.js";
 }
 
-async function getOrRegisterServiceWorker(): Promise<ServiceWorkerRegistration> {
+function promiseWithTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      reject(new Error(`${label} — quá ${ms / 1000}s (thường do sw.js lỗi hoặc chưa active). Thử tải lại trang.`));
+    }, ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
+/**
+ * Luôn gọi register() (tránh registration cũ kẹt), rồi chờ ready có timeout — tránh treo vô hạn trên iOS.
+ */
+async function getOrRegisterServiceWorker(log: StepLogger): Promise<ServiceWorkerRegistration> {
   const path = serviceWorkerScriptPath();
-  let reg = await navigator.serviceWorker.getRegistration("/");
-  if (!reg) {
-    reg = await navigator.serviceWorker.register(path, { scope: "/", updateViaCache: "none" });
+  log(`register("${path}")…`);
+  const reg = await navigator.serviceWorker.register(path, { scope: "/", updateViaCache: "none" });
+  log(
+    `Đã register (active=${reg.active ? "có" : "chưa"}, installing=${reg.installing ? "có" : "không"}, waiting=${reg.waiting ? "có" : "không"}).`
+  );
+
+  await promiseWithTimeout(navigator.serviceWorker.ready, 30000, "navigator.serviceWorker.ready");
+  log("Service Worker đã ready.");
+
+  if (!reg.pushManager) {
+    throw new Error("pushManager không khả dụng trên registration này.");
   }
-  await navigator.serviceWorker.ready;
   return reg;
 }
 
@@ -38,12 +66,17 @@ async function subscribeUser(
   log: StepLogger
 ): Promise<PushSubscription> {
   log("Convert key VAPID → Uint8Array…");
-  const applicationServerKey = urlBase64ToUint8Array(vapidPublicKeyFromApi) as unknown as Uint8Array as BufferSource;
-  log(`Đã convert (${applicationServerKey.byteLength} byte). Đang đăng ký push…`);
-  return registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey,
-  });
+  const keyBytes = urlBase64ToUint8Array(vapidPublicKeyFromApi);
+  log(`Đã convert (${keyBytes.byteLength} byte). pushManager.subscribe…`);
+  const applicationServerKey = keyBytes as unknown as Uint8Array as BufferSource;
+  return promiseWithTimeout(
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    }),
+    45000,
+    "pushManager.subscribe"
+  );
 }
 
 type UiState = "idle" | "loading" | "success" | "error";
@@ -125,9 +158,8 @@ export default function PushNotificationManager({ className = "" }: { className?
       }
       appendLog("Đã nhận publicKey từ API.");
 
-      appendLog("Đăng ký / chờ Service Worker sẵn sàng…");
-      const reg = await getOrRegisterServiceWorker();
-      await navigator.serviceWorker.ready;
+      appendLog("Đăng ký / chờ Service Worker (có giới hạn thời gian)…");
+      const reg = await getOrRegisterServiceWorker(appendLog);
       appendLog(`SW active: ${reg.active?.scriptURL ?? "—"}`);
 
       const sub = await subscribeUser(reg, vapid.publicKey, appendLog);
