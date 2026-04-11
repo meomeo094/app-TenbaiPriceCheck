@@ -35,6 +35,7 @@ app.use(
 // Không dùng app.options("*", cors()) — path-to-regexp mới (Express 5) báo PathError với "*".
 // Middleware cors() ở trên đã tự trả OPTIONS preflight cho mọi route.
 
+// Large JSON bodies for POST /api/tcg/identify (imageBase64) — avoid truncating base64 mid-string
 app.use(express.json({ limit: "50mb" }));
 
 app.use("/api/diagnostics", testRoutes);
