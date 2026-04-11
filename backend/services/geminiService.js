@@ -12,11 +12,25 @@ const {
 /** Exact id; override with GEMINI_MODEL if needed. */
 const FALLBACK_MODEL_ID = "gemini-1.5-flash";
 
-/** If primary id404s on v1, try this once (no v1beta override in app code). */
+/** v1beta-only alias; use with GEMINI_REQUEST_OPTIONS_BETA, not v1. */
 const MODEL_FALLBACK_404_ID = "gemini-1.5-flash-latest";
 
 /** Stable Generative Language API version (see @google/generative-ai RequestUrl). */
 const GEMINI_REQUEST_OPTIONS = { apiVersion: "v1" };
+
+/** v1beta lists more model aliases (e.g. *-latest); used after v1 returns404. */
+const GEMINI_REQUEST_OPTIONS_BETA = { apiVersion: "v1beta" };
+
+/** When 1.5* ids are no longer published for the key, last resort (see ListModels). Override: GEMINI_MODEL_FALLBACK_FINAL. */
+const FINAL_CATALOG_FALLBACK_DEFAULT = "gemini-2.0-flash";
+
+/**
+ * @returns {string}
+ */
+function getFinalCatalogFallbackModelId() {
+  const fromEnv = (process.env.GEMINI_MODEL_FALLBACK_FINAL || "").trim().replace(/\s+/g, "");
+  return fromEnv || FINAL_CATALOG_FALLBACK_DEFAULT;
+}
 
 /** Log when base64 payload is large (rough token / quota pressure). */
 const LARGE_IMAGE_BASE64_CHARS = 2 * 1024 * 1024;
@@ -152,9 +166,16 @@ function parseModelJson(text) {
  * @param {string} modelId
  * @param {string} mime
  * @param {string} data
+ * @param {{ apiVersion?: string }} [requestOptions]
  */
-async function generateIdentifyWithModel(genAI, modelId, mime, data) {
-  const model = genAI.getGenerativeModel({ model: modelId }, GEMINI_REQUEST_OPTIONS);
+async function generateIdentifyWithModel(
+  genAI,
+  modelId,
+  mime,
+  data,
+  requestOptions = GEMINI_REQUEST_OPTIONS
+) {
+  const model = genAI.getGenerativeModel({ model: modelId }, requestOptions);
 
   const userPrompt =
     "Return ONLY one valid JSON object (no markdown, no extra text) with keys: name, card_number, set_name, centering_estimate. Use null for unknown values.";
@@ -174,7 +195,7 @@ async function generateIdentifyWithModel(genAI, modelId, mime, data) {
             },
           },
         ],
-        GEMINI_REQUEST_OPTIONS
+        requestOptions
       );
 
       const text = result.response.text();
@@ -246,23 +267,72 @@ async function identifyCardFromImage(base64Image, mimeType) {
   try {
     return await generateIdentifyWithModel(genAI, primaryModelId, mime, data);
   } catch (e) {
-    if (isModelNotFoundError(e) && primaryModelId !== MODEL_FALLBACK_404_ID) {
-      logGeminiError(
-        `Model not found for ${primaryModelId} — retrying with ${MODEL_FALLBACK_404_ID}`,
-        e
+    if (!isModelNotFoundError(e)) {
+      throw e;
+    }
+
+    logGeminiError(`Model not found on v1 (${primaryModelId}) — retrying same id on v1beta`, e);
+    console.error("[Gemini] Switching apiVersion to v1beta for:", primaryModelId);
+    /** @type {unknown} */
+    let lastModelNotFound = e;
+    try {
+      return await generateIdentifyWithModel(
+        genAI,
+        primaryModelId,
+        mime,
+        data,
+        GEMINI_REQUEST_OPTIONS_BETA
       );
-      console.log("[Gemini] Fallback model:", MODEL_FALLBACK_404_ID);
-      try {
-        return await generateIdentifyWithModel(genAI, MODEL_FALLBACK_404_ID, mime, data);
-      } catch (e2) {
-        logGeminiError(`Fallback model ${MODEL_FALLBACK_404_ID} also failed`, e2);
-        throw e2;
+    } catch (eBetaSame) {
+      lastModelNotFound = eBetaSame;
+      if (!isModelNotFoundError(eBetaSame)) {
+        throw eBetaSame;
       }
     }
-    if (isModelNotFoundError(e)) {
-      logGeminiError(`Model not found (${primaryModelId}); no alternate id to try`, e);
+
+    if (primaryModelId !== MODEL_FALLBACK_404_ID) {
+      logGeminiError(
+        `Still not found — trying ${MODEL_FALLBACK_404_ID} on v1beta only`,
+        lastModelNotFound
+      );
+      console.error("[Gemini] Fallback model (v1beta):", MODEL_FALLBACK_404_ID);
+      try {
+        return await generateIdentifyWithModel(
+          genAI,
+          MODEL_FALLBACK_404_ID,
+          mime,
+          data,
+          GEMINI_REQUEST_OPTIONS_BETA
+        );
+      } catch (e2) {
+        lastModelNotFound = e2;
+        if (!isModelNotFoundError(e2)) {
+          logGeminiError(`Fallback model ${MODEL_FALLBACK_404_ID} on v1beta failed`, e2);
+          throw e2;
+        }
+      }
     }
-    throw e;
+
+    const finalId = getFinalCatalogFallbackModelId();
+    if (
+      finalId === primaryModelId ||
+      finalId === MODEL_FALLBACK_404_ID
+    ) {
+      logGeminiError(`Model not found (${primaryModelId}); final id same as tried path`, lastModelNotFound);
+      throw lastModelNotFound instanceof Error ? lastModelNotFound : e;
+    }
+
+    logGeminiError(
+      `1.5/alias path unavailable — final catalog fallback on v1: ${finalId}`,
+      lastModelNotFound
+    );
+    console.error("[Gemini] Final fallback (v1):", finalId);
+    try {
+      return await generateIdentifyWithModel(genAI, finalId, mime, data, GEMINI_REQUEST_OPTIONS);
+    } catch (e3) {
+      logGeminiError(`Final fallback model ${finalId} failed`, e3);
+      throw e3;
+    }
   }
 }
 
@@ -276,9 +346,11 @@ async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
 module.exports = {
   DEFAULT_MODEL,
   getGeminiModelId,
+  getFinalCatalogFallbackModelId,
   FALLBACK_MODEL_ID,
   MODEL_FALLBACK_404_ID,
   GEMINI_REQUEST_OPTIONS,
+  GEMINI_REQUEST_OPTIONS_BETA,
   identifyCardFromImage,
   recognizeCardFromImage,
 };
