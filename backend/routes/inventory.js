@@ -129,7 +129,7 @@ router.put("/", async (req, res) => {
   }
 
   console.log(
-    "[inventory] OK: upserted to Supabase — table my_inventory (name, jan_code, purchase_price)."
+    `[inventory] OK: đã insert ${out.length} dòng lên Supabase — bảng my_inventory (name, jan_code, purchase_price).`
   );
 
   res.json({ ok: true, inventory: out });

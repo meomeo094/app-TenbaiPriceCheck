@@ -125,67 +125,46 @@ async function syncMyInventoryToSupabase(rows) {
     return { ok: false, errors: [{ operation: "supabase_config", error: configError }] };
   }
 
-  const payload = rows.map((r) => ({
-    name: r.name ?? "",
-    jan_code: r.jan,
-    purchase_price: r.purchase_price,
-  }));
+  // Validate: lọc bỏ dòng null/invalid trước khi gửi Supabase
+  const payload = rows
+    .filter((r) => r.jan && typeof r.jan === "string" && r.jan.trim().length > 0)
+    .map((r) => ({
+      name: (r.name ?? "").trim(),
+      jan_code: String(r.jan).trim(),
+      purchase_price: Number.isFinite(r.purchase_price) ? r.purchase_price : 0,
+    }));
+
+  // Chiến lược: DELETE ALL → INSERT (không phụ thuộc unique constraint trên jan_code).
+  const { error: deleteAllError } = await supabase
+    .from(TABLE_MY_INVENTORY)
+    .delete()
+    .not("jan_code", "is", null);   // điều kiện luôn true → xoá hết
+
+  if (deleteAllError) {
+    console.error("Lỗi Supabase delete-all:", deleteAllError);
+    logSupabaseError("my_inventory.delete(all before insert)", deleteAllError);
+    errors.push({ operation: "delete(all)", error: deleteAllError });
+    return { ok: false, errors };
+  }
 
   if (payload.length === 0) {
-    const { error: emptyError } = await supabase
-      .from(TABLE_MY_INVENTORY)
-      .delete()
-      .not("jan_code", "is", null);
-
-    if (emptyError) {
-      console.error("Lỗi insert Supabase:", emptyError);
-      logSupabaseError("my_inventory.delete(khi inventory rỗng)", emptyError);
-      errors.push({ operation: "delete(all)", error: emptyError });
-    }
-    return { ok: errors.length === 0, errors };
+    console.log("[Supabase] Xoá toàn bộ my_inventory (inventory rỗng).");
+    return { ok: true, errors: [] };
   }
 
-  const { error: upsertError } = await supabase
+  const { error: insertError } = await supabase
     .from(TABLE_MY_INVENTORY)
-    .upsert(payload, { onConflict: "jan_code" });
+    .insert(payload);
 
-  if (upsertError) {
-    console.error("Lỗi insert Supabase:", upsertError);
-    logSupabaseError("my_inventory.upsert (insert/update theo jan_code)", upsertError);
-    errors.push({ operation: "upsert", error: upsertError });
+  if (insertError) {
+    console.error("Lỗi Supabase insert:", insertError);
+    logSupabaseError("my_inventory.insert (bulk)", insertError);
+    errors.push({ operation: "insert", error: insertError });
     return { ok: false, errors };
   }
 
-  const keepCodes = new Set(rows.map((r) => r.jan));
-  const { data: existing, error: selectError } = await supabase
-    .from(TABLE_MY_INVENTORY)
-    .select("jan_code");
-
-  if (selectError) {
-    console.error("Lỗi insert Supabase:", selectError);
-    logSupabaseError("my_inventory.select(jan_code)", selectError);
-    errors.push({ operation: "select(jan_code)", error: selectError });
-    return { ok: false, errors };
-  }
-
-  const toDelete = (existing || [])
-    .map((row) => row.jan_code)
-    .filter((code) => code && !keepCodes.has(code));
-
-  for (const janCode of toDelete) {
-    const { error: deleteError } = await supabase
-      .from(TABLE_MY_INVENTORY)
-      .delete()
-      .eq("jan_code", janCode);
-
-    if (deleteError) {
-      console.error("Lỗi insert Supabase:", deleteError);
-      logSupabaseError(`my_inventory.delete(jan_code=${janCode})`, deleteError);
-      errors.push({ operation: `delete(jan_code=${janCode})`, error: deleteError });
-    }
-  }
-
-  return { ok: errors.length === 0, errors };
+  console.log(`[Supabase] INSERT OK — ${payload.length} dòng vào my_inventory.`);
+  return { ok: true, errors: [] };
 }
 
 /** Giữ export để mở rộng (đọc metadata, v.v.) — cũng dùng service role nếu có. */
