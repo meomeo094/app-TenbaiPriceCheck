@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { identifyTcgCard } from "@/app/lib/api";
+import { identifyTcgCard, TcgIdentifyError } from "@/app/lib/api";
 
 interface TcgResult {
   cardName: string | null;
@@ -28,11 +28,13 @@ export default function TcgCheckPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TcgResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<"rateLimit" | "generic" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((file: File) => {
     setError(null);
+    setErrorKind(null);
     setResult(null);
     setFileName(file.name);
     setPreview(URL.createObjectURL(file));
@@ -58,6 +60,7 @@ export default function TcgCheckPage() {
     }
     setLoading(true);
     setError(null);
+    setErrorKind(null);
     setResult(null);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -79,7 +82,16 @@ export default function TcgCheckPage() {
         centering: data.centering_estimate ?? null,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Loi khong xac dinh khi phan tich anh.");
+      if (e instanceof TcgIdentifyError && e.rateLimited) {
+        setErrorKind("rateLimit");
+        setError(
+          e.message ||
+            "Google \u0111ang b\u1eadn x\u1eed l\u00fd, s\u1ebfp vui l\u00f2ng \u0111\u1ee3i 20 gi\u00e2y r\u1ed3i th\u1eed l\u1ea1i nh\u00e9!"
+        );
+      } else {
+        setErrorKind("generic");
+        setError(e instanceof Error ? e.message : "Loi khong xac dinh khi phan tich anh.");
+      }
     } finally {
       setLoading(false);
     }
@@ -90,6 +102,7 @@ export default function TcgCheckPage() {
     setFileName(null);
     setResult(null);
     setError(null);
+    setErrorKind(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
@@ -174,7 +187,13 @@ export default function TcgCheckPage() {
           />
 
           {error && (
-            <p className="text-red-400 text-sm rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-2">
+            <p
+              className={
+                errorKind === "rateLimit"
+                  ? "text-amber-200 text-sm rounded-xl border border-amber-500/40 bg-amber-950/35 px-4 py-2"
+                  : "text-red-400 text-sm rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-2"
+              }
+            >
               {error}
             </p>
           )}

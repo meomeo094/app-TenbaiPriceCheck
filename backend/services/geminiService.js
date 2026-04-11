@@ -4,8 +4,33 @@
  */
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-/** Default avoids bare "gemini-1.5-flash" 404 on some API tiers; override with GEMINI_MODEL. */
-const FALLBACK_MODEL_ID = "gemini-1.5-flash-latest";
+/** Free-tier quota is typically roomier than 2.0 Flash; override with GEMINI_MODEL. */
+const FALLBACK_MODEL_ID = "gemini-1.5-flash";
+
+/** Log when base64 payload is large (rough token / quota pressure). */
+const LARGE_IMAGE_BASE64_CHARS = 2 * 1024 * 1024;
+
+const MAX_GEMINI_ATTEMPTS = 3;
+const RATE_LIMIT_RETRY_WAIT_MS = 5000;
+
+/** @param {number} ms */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isRateLimitError(err) {
+  if (err == null || typeof err !== "object") return false;
+  const o = /** @type {{ status?: number; code?: number; message?: string; cause?: unknown }} */ (err);
+  if (o.status === 429 || o.code === 429) return true;
+  const msg = String(o.message ?? err);
+  if (/429|Too Many Requests|RESOURCE_EXHAUSTED|quota/i.test(msg)) return true;
+  if (o.cause) return isRateLimitError(o.cause);
+  return false;
+}
 
 /**
  * @returns {string} Model id without stray whitespace.
@@ -86,6 +111,14 @@ async function identifyCardFromImage(base64Image, mimeType) {
     throw new Error("identifyCardFromImage: image payload too short or invalid.");
   }
 
+  if (data.length > LARGE_IMAGE_BASE64_CHARS) {
+    console.warn(
+      "[Gemini] Anh base64 rat lon (~" +
+        (data.length / (1024 * 1024)).toFixed(2) +
+        " MB chuoi) — de ton token, nen giam kich thuoc truoc khi gui."
+    );
+  }
+
   const modelName = getGeminiModelId();
   console.log("\u0110ang g\u1ecdi Gemini v\u1edbi model:", modelName);
   console.log("[Gemini] \u0110ang ph\u00E2n t\u00EDch \u1EA3nh...");
@@ -99,25 +132,47 @@ async function identifyCardFromImage(base64Image, mimeType) {
   const userPrompt =
     "Return ONLY one valid JSON object (no markdown, no extra text) with keys: name, card_number, set_name, centering_estimate. Use null for unknown values.";
 
-  const result = await model.generateContent([
-    { text: userPrompt },
-    {
-      inlineData: {
-        mimeType: mime,
-        data,
-      },
-    },
-  ]);
+  let lastErr = /** @type {unknown} */ (undefined);
+  for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt++) {
+    try {
+      const result = await model.generateContent([
+        { text: userPrompt },
+        {
+          inlineData: {
+            mimeType: mime,
+            data,
+          },
+        },
+      ]);
 
-  const text = result.response.text();
-  try {
-    return parseModelJson(text);
-  } catch (e) {
-    console.error("[Gemini] Could not parse JSON from model:", text.slice(0, 500));
-    throw new Error(
-      `Gemini response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`
-    );
+      const text = result.response.text();
+      try {
+        return parseModelJson(text);
+      } catch (e) {
+        console.error("[Gemini] Could not parse JSON from model:", text.slice(0, 500));
+        throw new Error(
+          `Gemini response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    } catch (e) {
+      lastErr = e;
+      if (!isRateLimitError(e)) {
+        throw e;
+      }
+      if (attempt === MAX_GEMINI_ATTEMPTS) {
+        console.error("[Gemini] Rate limit sau " + MAX_GEMINI_ATTEMPTS + " lan goi.");
+        throw new Error("GEMINI_RATE_LIMIT_EXHAUSTED");
+      }
+      console.log(
+        "[Gemini] H\u1ebft l\u01b0\u1ee3t, \u0111ang \u0111\u1ee3i 5 gi\u00e2y \u0111\u1ec3 th\u1eed l\u1ea1i l\u1ea7n " +
+          attempt +
+          "...."
+      );
+      await sleep(RATE_LIMIT_RETRY_WAIT_MS);
+    }
   }
+
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
