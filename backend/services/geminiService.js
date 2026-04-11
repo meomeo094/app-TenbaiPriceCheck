@@ -1,36 +1,23 @@
 "use strict";
 /**
  * TCG card identification via Gemini Vision.
- * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional, default "gemini-1.5-flash").
+ * Env: GEMINI_API_KEY (required).
+ * Model is fixed to gemini-1.5-flash — no env overrides, no apiVersion (SDK default route).
  */
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-
-const DEFAULT_MODEL = (() => {
-  const env = (process.env.GEMINI_MODEL || "").trim().replace(/\s+/g, "");
-  return env || "gemini-1.5-flash";
-})();
-
+const GEMINI_MODEL_ID = "gemini-1.5-flash";
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
 
-const SYSTEM_INSTRUCTION =
-  "Bạn là chuyên gia thẩm định thẻ bài TCG (Pokemon, One Piece). " +
-  "Hãy đọc ảnh và trả về JSON gồm: name (tên thẻ), card_number (mã số ví dụ 001/100), " +
-  "set_name (tên bộ), và centering_estimate (đánh giá độ cân đối viền).";
-
-const USER_PROMPT =
+/** System + user instructions in one text block (no separate systemInstruction). */
+const FULL_TEXT_PROMPT =
+  "B\u1ea1n l\u00e0 chuy\u00ean gia th\u1ea9m \u0111\u1ecbnh th\u1ebb b\u00e0i TCG (Pokemon, One Piece). " +
+  "H\u00e3y \u0111\u1ecdc \u1ea3nh v\u00e0 tr\u1ea3 v\u1ec1 JSON g\u1ed3m: name (t\u00ean th\u1ebb), card_number (m\u00e3 s\u1ed1 v\u00ed d\u1ee5 001/100), " +
+  "set_name (t\u00ean b\u1ed9), v\u00e0 centering_estimate (\u0111\u00e1nh gi\u00e1 \u0111\u1ed9 c\u00e2n \u0111\u1ed1i vi\u1ec1n).\n\n" +
   "Return ONLY one valid JSON object (no markdown, no extra text) with keys: " +
   "name, card_number, set_name, centering_estimate. Use null for unknown values.";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** @param {number} ms */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -57,7 +44,7 @@ function parseBase64Input(base64Image, mimeTypeHint) {
   const dataUrl = raw.match(/^data:([^;]+);base64,(.+)$/is);
   if (dataUrl) {
     return {
-      mimeType: (dataUrl[1].split(";")[0].trim() || "image/jpeg"),
+      mimeType: dataUrl[1].split(";")[0].trim() || "image/jpeg",
       data: dataUrl[2].replace(/\s/g, ""),
     };
   }
@@ -74,27 +61,21 @@ function parseJsonResponse(text) {
   if (fence) s = fence[1].trim();
   const obj = JSON.parse(s);
   return {
-    name:               obj.name               != null ? String(obj.name)               : null,
-    card_number:        obj.card_number        != null ? String(obj.card_number)        : null,
-    set_name:           obj.set_name           != null ? String(obj.set_name)           : null,
+    name: obj.name != null ? String(obj.name) : null,
+    card_number: obj.card_number != null ? String(obj.card_number) : null,
+    set_name: obj.set_name != null ? String(obj.set_name) : null,
     centering_estimate: obj.centering_estimate != null ? String(obj.centering_estimate) : null,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Core
-// ---------------------------------------------------------------------------
-
 /**
- * @param {string} base64Image   raw base64 or data-URL
+ * @param {string} base64Image
  * @param {string} [mimeType]
  */
 async function identifyCardFromImage(base64Image, mimeType) {
   const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   if (!apiKey) {
-    console.error("================================================================");
     console.error("[Gemini] GEMINI_API_KEY is not set in backend/.env");
-    console.error("================================================================");
     throw new Error("GEMINI_API_KEY is not set in backend/.env");
   }
 
@@ -104,52 +85,39 @@ async function identifyCardFromImage(base64Image, mimeType) {
   }
   if (data.length > 2 * 1024 * 1024) {
     console.warn(
-      "[Gemini] Base64 payload is large (~" +
-        (data.length / (1024 * 1024)).toFixed(2) +
-        " MB) — consider resizing to save tokens."
+      "[Gemini] Large base64 (~" + (data.length / (1024 * 1024)).toFixed(2) + " MB) — consider resizing."
     );
   }
 
-  const modelId = DEFAULT_MODEL;
-  console.log("[Gemini] Đang gọi Gemini với model:", modelId);
-  console.log("[Gemini] Đang phân tích ảnh...");
+  console.log("[Gemini] model:", GEMINI_MODEL_ID);
 
-  // Initialise SDK with no apiVersion override — SDK routes automatically
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelId,
-    systemInstruction: SYSTEM_INSTRUCTION,
-  });
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL_ID });
 
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const result = await model.generateContent([
-        { text: USER_PROMPT },
+        { text: FULL_TEXT_PROMPT },
         { inlineData: { mimeType: mime, data } },
       ]);
-
       const raw = result.response.text();
       try {
         return parseJsonResponse(raw);
       } catch {
-        console.error("[Gemini] Response not valid JSON:", raw.slice(0, 500));
+        console.error("[Gemini] Invalid JSON from model:", raw.slice(0, 500));
         throw new Error("Gemini response was not valid JSON.");
       }
     } catch (err) {
       lastErr = err;
-
       if (!isRateLimitError(err)) {
-        // Log full error so we can see the real Google message
-        console.error("[Gemini] Error on attempt", attempt + "/" + MAX_ATTEMPTS + ":");
-        console.error(err instanceof Error ? err.message : err);
+        console.error("[Gemini] Error:", err instanceof Error ? err.message : err);
         throw err;
       }
-
       if (attempt === MAX_ATTEMPTS) {
         throw new Error("GEMINI_RATE_LIMIT_EXHAUSTED");
       }
-      console.log(`[Gemini] Hết lượt, đang đợi 5 giây để thử lại lần ${attempt}....`);
+      console.log("[Gemini] Rate limit — waiting 5s, retry " + attempt + "/" + MAX_ATTEMPTS);
       await sleep(RETRY_DELAY_MS);
     }
   }
@@ -157,7 +125,6 @@ async function identifyCardFromImage(base64Image, mimeType) {
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-/** @param {Buffer} imageBuffer */
 async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
     throw new Error("recognizeCardFromImage: invalid imageBuffer.");
@@ -166,7 +133,7 @@ async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
 }
 
 module.exports = {
-  DEFAULT_MODEL,
+  GEMINI_MODEL_ID,
   identifyCardFromImage,
   recognizeCardFromImage,
 };

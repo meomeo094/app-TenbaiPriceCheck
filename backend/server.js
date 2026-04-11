@@ -15,7 +15,7 @@ const testRoutes = require("./routes/test");
 const checkProfitRoutes = require("./routes/checkProfit");
 const inventoryRoutes = require("./routes/inventory");
 const tcgRouter = require("./routes/tcg");
-const { getGeminiModelId } = require("./services/geminiService");
+const { GEMINI_MODEL_ID } = require("./services/geminiService");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
 chromium.use(StealthPlugin());
@@ -35,7 +35,7 @@ app.use(
 // Không dùng app.options("*", cors()) — path-to-regexp mới (Express 5) báo PathError với "*".
 // Middleware cors() ở trên đã tự trả OPTIONS preflight cho mọi route.
 
-// Large JSON bodies for POST /api/tcg/identify (imageBase64) — avoid truncating base64 mid-string
+// Large JSON bodies for POST /api/tcg/identify (imageBase64) — must run before /api/tcg so body-parser sees the payload
 app.use(express.json({ limit: "50mb" }));
 
 app.use("/api/diagnostics", testRoutes);
@@ -225,7 +225,7 @@ app.listen(PORT, () => {
     `📦 Inventory: GET|PUT http://localhost:${PORT}/api/my-inventory (alias: /api/inventory)`
   );
   console.log(
-    "TCG Gemini stub: GET http://localhost:" + PORT + "/api/tcg/gemini (model: " + getGeminiModelId() + ")"
+    "TCG Gemini stub: GET http://localhost:" + PORT + "/api/tcg/gemini (model: " + GEMINI_MODEL_ID + ")"
   );
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
 });
