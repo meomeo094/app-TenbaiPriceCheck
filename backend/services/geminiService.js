@@ -1,10 +1,21 @@
 /**
- * TCG card identification via Gemini 1.5 Flash (base64 image).
- * Env: GEMINI_API_KEY in backend/.env
+ * TCG card identification via Gemini (base64 image).
+ * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional).
  */
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const DEFAULT_MODEL = "gemini-1.5-flash";
+/** Default avoids bare "gemini-1.5-flash" 404 on some API tiers; override with GEMINI_MODEL. */
+const FALLBACK_MODEL_ID = "gemini-1.5-flash-latest";
+
+/**
+ * @returns {string} Model id without stray whitespace.
+ */
+function getGeminiModelId() {
+  const fromEnv = (process.env.GEMINI_MODEL || "").trim().replace(/\s+/g, "");
+  return fromEnv || FALLBACK_MODEL_ID;
+}
+
+const DEFAULT_MODEL = getGeminiModelId();
 
 const SYSTEM_INSTRUCTION = [
   "B\u1ea1n l\u00e0 chuy\u00ean gia th\u1ea9m \u0111\u1ecbnh th\u1ebb b\u00e0i TCG (Pokemon, One Piece).",
@@ -54,12 +65,12 @@ function parseModelJson(text) {
 
 /**
  * @param {string} base64Image — raw base64 or data URL
- * @param {string} [mimeType] — required if base64 has no data: prefix
+ * @param {string} [mimeType]
  * @returns {Promise<{ name: string | null, card_number: string | null, set_name: string | null, centering_estimate: string | null }>}
  */
 async function identifyCardFromImage(base64Image, mimeType) {
-  const key = (process.env.GEMINI_API_KEY || "").trim();
-  if (!key) {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) {
     console.error("");
     console.error("================================================================");
     console.error("[Gemini] ERROR: Missing GEMINI_API_KEY in backend/.env");
@@ -75,11 +86,13 @@ async function identifyCardFromImage(base64Image, mimeType) {
     throw new Error("identifyCardFromImage: image payload too short or invalid.");
   }
 
+  const modelName = getGeminiModelId();
+  console.log("\u0110ang g\u1ecdi Gemini v\u1edbi model:", modelName);
   console.log("[Gemini] \u0110ang ph\u00E2n t\u00EDch \u1EA3nh...");
 
-  const genAI = new GoogleGenerativeAI(key);
+  const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: DEFAULT_MODEL,
+    model: modelName,
     systemInstruction: SYSTEM_INSTRUCTION,
   });
 
@@ -116,6 +129,8 @@ async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
 
 module.exports = {
   DEFAULT_MODEL,
+  getGeminiModelId,
+  FALLBACK_MODEL_ID,
   identifyCardFromImage,
   recognizeCardFromImage,
 };

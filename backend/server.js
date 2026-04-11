@@ -15,7 +15,7 @@ const testRoutes = require("./routes/test");
 const checkProfitRoutes = require("./routes/checkProfit");
 const inventoryRoutes = require("./routes/inventory");
 const tcgRouter = require("./routes/tcg");
-const { DEFAULT_MODEL: GEMINI_TCG_MODEL } = require("./services/geminiService");
+const { getGeminiModelId } = require("./services/geminiService");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
 chromium.use(StealthPlugin());
@@ -224,7 +224,7 @@ app.listen(PORT, () => {
     `📦 Inventory: GET|PUT http://localhost:${PORT}/api/my-inventory (alias: /api/inventory)`
   );
   console.log(
-    "TCG Gemini stub: GET http://localhost:" + PORT + "/api/tcg/gemini (model: " + GEMINI_TCG_MODEL + ")"
+    "TCG Gemini stub: GET http://localhost:" + PORT + "/api/tcg/gemini (model: " + getGeminiModelId() + ")"
   );
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
 });
