@@ -14,6 +14,7 @@ const { scrapeMoriMori } = require("./scrapers/morimori");
 const testRoutes = require("./routes/test");
 const checkProfitRoutes = require("./routes/checkProfit");
 const inventoryRoutes = require("./routes/inventory");
+const tcgRouter = require("./routes/tcg");
 const { DEFAULT_MODEL: GEMINI_TCG_MODEL } = require("./services/geminiService");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
@@ -34,7 +35,7 @@ app.use(
 // Không dùng app.options("*", cors()) — path-to-regexp mới (Express 5) báo PathError với "*".
 // Middleware cors() ở trên đã tự trả OPTIONS preflight cho mọi route.
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 app.use("/api/diagnostics", testRoutes);
 app.use("/api/check-profit", checkProfitRoutes);
@@ -42,16 +43,8 @@ app.use("/api/check-profit", checkProfitRoutes);
 app.use("/api/my-inventory", inventoryRoutes);
 app.use("/api/inventory", inventoryRoutes);
 
-// TCG AI — Gemini 1.5 Flash stub (see services/geminiService.js)
-app.get("/api/tcg/gemini", (_req, res) => {
-  res.json({
-    ok: true,
-    stub: true,
-    model: GEMINI_TCG_MODEL,
-    message:
-      "Gemini TCG stub is loaded. Set GEMINI_API_KEY and implement recognizeCardFromImage().",
-  });
-});
+/** TCG — POST /api/tcg/identify, GET /api/tcg/gemini */
+app.use("/api/tcg", tcgRouter);
 
 // Lưu browser instances để cleanup
 const activeBrowsers = new Map();

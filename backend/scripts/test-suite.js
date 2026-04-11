@@ -114,8 +114,10 @@ async function main() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error("ok=false");
-    if (!d.stub) throw new Error("stub field missing");
     if (!d.model) throw new Error("model field missing");
+    if (typeof d.configured !== "boolean" && d.stub !== true) {
+      throw new Error("expected configured (new) or stub:true (legacy)");
+    }
   });
 
   // ─── Test 6: Frontend /tcg-check ──────────────────────────
