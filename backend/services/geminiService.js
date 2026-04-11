@@ -1,12 +1,20 @@
 "use strict";
 /**
  * TCG card identification via Gemini Vision.
- * Env: GEMINI_API_KEY (required).
- * Model is fixed to gemini-2.0-flash — no apiVersion override (SDK default route, v1beta).
+ * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional; default gemini-2.5-flash).
+ * Do not pass apiVersion — let @google/generative-ai choose the default route.
  */
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const GEMINI_MODEL_ID = "gemini-2.0-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+
+/**
+ * @returns {string}
+ */
+function getGeminiModelId() {
+  const fromEnv = (process.env.GEMINI_MODEL || "").trim().replace(/\s+/g, "");
+  return fromEnv || DEFAULT_GEMINI_MODEL;
+}
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
 
@@ -89,10 +97,11 @@ async function identifyCardFromImage(base64Image, mimeType) {
     );
   }
 
-  console.log("[Gemini] model:", GEMINI_MODEL_ID);
+  const modelId = getGeminiModelId();
+  console.log("[Gemini] model:", modelId);
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL_ID });
+  const model = genAI.getGenerativeModel({ model: modelId });
 
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -133,7 +142,8 @@ async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
 }
 
 module.exports = {
-  GEMINI_MODEL_ID,
+  DEFAULT_GEMINI_MODEL,
+  getGeminiModelId,
   identifyCardFromImage,
   recognizeCardFromImage,
 };
