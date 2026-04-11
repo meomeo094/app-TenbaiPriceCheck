@@ -2,11 +2,11 @@
 /**
  * TCG card identification via Gemini Vision.
  * Env: GEMINI_API_KEY (required).
- * Model is fixed to gemini-1.5-flash — no env overrides, no apiVersion (SDK default route).
+ * Model is fixed to gemini-2.0-flash — no apiVersion override (SDK default route, v1beta).
  */
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const GEMINI_MODEL_ID = "gemini-1.5-flash";
+const GEMINI_MODEL_ID = "gemini-2.0-flash";
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
 
