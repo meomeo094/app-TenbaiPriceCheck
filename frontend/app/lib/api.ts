@@ -148,17 +148,6 @@ export interface TcgIdentifyResponse {
   set_name?: string | null;
   centering_estimate?: string | null;
   error?: string;
-  rateLimited?: boolean;
-}
-
-export class TcgIdentifyError extends Error {
-  readonly rateLimited: boolean;
-
-  constructor(message: string, opts?: { rateLimited?: boolean }) {
-    super(message);
-    this.name = "TcgIdentifyError";
-    this.rateLimited = Boolean(opts?.rateLimited);
-  }
 }
 
 export async function identifyTcgCard(imageBase64: string): Promise<TcgIdentifyResponse> {
@@ -175,9 +164,7 @@ export async function identifyTcgCard(imageBase64: string): Promise<TcgIdentifyR
     throw new Error(`tcg/identify ${response.status}: invalid JSON`);
   }
   if (!response.ok) {
-    throw new TcgIdentifyError(data.error || `tcg/identify ${response.status}: ${text.slice(0, 200)}`, {
-      rateLimited: data.rateLimited === true,
-    });
+    throw new Error(data.error || `tcg/identify ${response.status}: ${text.slice(0, 200)}`);
   }
   return data;
 }

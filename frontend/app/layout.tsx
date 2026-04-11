@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 
-const geist = Geist({ subsets: ["latin"] });
+const geist = Geist({ subsets: ["latin", "latin-ext"] });
 
 export const metadata: Metadata = {
   title: "PriceCheck - Kiểm tra giá thu mua",
@@ -34,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="vi">
       <head>
+        <meta charSet="utf-8" />
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { identifyTcgCard, TcgIdentifyError } from "@/app/lib/api";
+import { identifyTcgCard } from "@/app/lib/api";
 
 interface TcgResult {
   cardName: string | null;
@@ -11,11 +11,11 @@ interface TcgResult {
   centering: string | null;
 }
 
-const COMPRESS_MAX_WIDTH = 1024;
-const JPEG_QUALITY = 0.7;
+const COMPRESS_MAX_WIDTH = 1200;
+const JPEG_QUALITY = 0.8;
 
 /**
- * Gi\u1ea3m chi\u1ec1u r\u1ed9ng t\u1ed1i \u0111a 1024px + JPEG quality 0.7 \u0111\u1ec3 ti\u1ebft ki\u1ec7m token.
+ * Gi\u1ea3m chi\u1ec1u r\u1ed9ng t\u1ed1i \u0111a 1200px + JPEG quality 0.8 (n\u00e9t, v\u1eabn nh\u1eb9).
  */
 async function compressImageFileToJpegDataUrl(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
@@ -40,10 +40,11 @@ async function compressImageFileToJpegDataUrl(file: File): Promise<string> {
   }
 }
 
-/** Snkrdunk: keyword = t\u00ean th\u1ebb + m\u00e3 s\u1ed1 (encode \u0111\u00fang). */
+/** Snkrdunk: \u0111\u00fang c\u00f4ng th\u1ee9c keyword = name + ' ' + card_number */
 function buildSnkrdunkUrl(name: string | null, cardNumber: string | null): string {
-  const keyword = [name?.trim(), cardNumber?.trim()].filter(Boolean).join(" ").trim();
-  return `https://snkrdunk.com/search?keyword=${encodeURIComponent(keyword)}`;
+  return `https://snkrdunk.com/search?keyword=${encodeURIComponent(
+    `${name ?? ""} ${cardNumber ?? ""}`.trim()
+  )}`;
 }
 
 function buildMercariUrl(q: string) {
@@ -61,13 +62,11 @@ export default function TcgCheckPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TcgResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [errorKind, setErrorKind] = useState<"rateLimit" | "generic" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((file: File) => {
     setError(null);
-    setErrorKind(null);
     setResult(null);
     setFileName(file.name);
     setPreview(URL.createObjectURL(file));
@@ -93,7 +92,6 @@ export default function TcgCheckPage() {
     }
     setLoading(true);
     setError(null);
-    setErrorKind(null);
     setResult(null);
     try {
       const dataUrl = await compressImageFileToJpegDataUrl(file);
@@ -109,18 +107,9 @@ export default function TcgCheckPage() {
         centering: data.centering_estimate ?? null,
       });
     } catch (e) {
-      if (e instanceof TcgIdentifyError && e.rateLimited) {
-        setErrorKind("rateLimit");
-        setError(
-          e.message ||
-            "Google \u0111ang b\u1eadn x\u1eed l\u00fd, vui l\u00f2ng \u0111\u1ee3i kho\u1ea3ng 20 gi\u00e2y r\u1ed3i th\u1eed l\u1ea1i nh\u00e9!"
-        );
-      } else {
-        setErrorKind("generic");
-        setError(
-          e instanceof Error ? e.message : "L\u1ed7i kh\u00f4ng x\u00e1c \u0111\u1ecbnh khi ph\u00e2n t\u00edch \u1ea3nh."
-        );
-      }
+      setError(
+        e instanceof Error ? e.message : "L\u1ed7i kh\u00f4ng x\u00e1c \u0111\u1ecbnh khi ph\u00e2n t\u00edch \u1ea3nh."
+      );
     } finally {
       setLoading(false);
     }
@@ -131,7 +120,6 @@ export default function TcgCheckPage() {
     setFileName(null);
     setResult(null);
     setError(null);
-    setErrorKind(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
@@ -149,7 +137,7 @@ export default function TcgCheckPage() {
           &larr;
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-white font-bold text-lg leading-tight">Check TCG (AI)</h1>
+          <h1 className="text-white font-bold text-lg leading-tight">Ki\u1ec3m tra TCG (AI)</h1>
           <p className="text-slate-400 text-xs">Nh\u1eadn di\u1ec7n th\u1ebb b\u00e0i \u2014 Gemini</p>
         </div>
         <span className="shrink-0 rounded-xl bg-violet-900/60 border border-violet-700/50 px-3 py-1.5 text-xs font-semibold text-violet-300">
@@ -218,20 +206,14 @@ export default function TcgCheckPage() {
           />
 
           {error && (
-            <p
-              className={
-                errorKind === "rateLimit"
-                  ? "text-amber-200 text-sm rounded-xl border border-amber-500/40 bg-amber-950/35 px-4 py-2"
-                  : "text-red-400 text-sm rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-2"
-              }
-            >
+            <p className="text-red-400 text-sm rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-2">
               {error}
             </p>
           )}
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-slate-200 text-sm font-semibold">2. AI Check</h2>
+          <h2 className="text-slate-200 text-sm font-semibold">2. Nh\u1eadn di\u1ec7n AI</h2>
           <div className="flex gap-3">
             <button
               type="button"
@@ -261,7 +243,7 @@ export default function TcgCheckPage() {
               <ResultRow label="T\u00ean th\u1ebb" value={result.cardName} />
               <ResultRow label="M\u00e3 s\u1ed1 th\u1ebb" value={result.productCode} mono />
               <ResultRow label="B\u1ed9 th\u1ebb" value={result.setName} />
-              <ResultRow label="C\u1ea1nh vi\u1ec1n" value={result.centering} />
+              <ResultRow label="\u0110\u00e1nh gi\u00e1 c\u0103n ch\u1ec9nh" value={result.centering} />
             </div>
 
             {searchQ !== "" && (
@@ -276,7 +258,7 @@ export default function TcgCheckPage() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-semibold py-3 px-4 rounded-xl text-sm"
                   >
-                    Check gi\u00e1 SNKRDUNK
+                    Tra c\u1ee9u gi\u00e1 SNKRDUNK
                   </a>
                   <a
                     href={buildMercariUrl(searchQ)}
@@ -284,7 +266,7 @@ export default function TcgCheckPage() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-4 rounded-xl text-sm"
                   >
-                    Check gi\u00e1 Mercari
+                    Tra c\u1ee9u gi\u00e1 Mercari
                   </a>
                 </div>
               </div>
@@ -296,7 +278,7 @@ export default function TcgCheckPage() {
           <div className="rounded-2xl border border-slate-700 bg-slate-800/40 p-4 text-slate-400 text-sm">
             <p>
               {
-                "\u1ea2nh \u0111\u01b0\u1ee3c n\u00e9n (t\u1ed1i \u0111a 1024px, JPEG 70%) r\u1ed3i g\u1eedi t\u1edbi "
+                "\u1ea2nh \u0111\u01b0\u1ee3c n\u00e9n (t\u1ed1i \u0111a 1200px, JPEG 80%) r\u1ed3i g\u1eedi t\u1edbi "
               }
               <code className="text-xs bg-slate-700 px-1 rounded">POST /api/tcg/identify</code>
               {". C\u1ea7n "}
