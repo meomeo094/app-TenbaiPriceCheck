@@ -22,6 +22,7 @@ router.get("/gemini", (_req, res) => {
 /**
  * POST /api/tcg/identify
  * Body: { imageBase64: string, mimeType?: string }
+ * JSON body limit: 50mb (express.json in server.js).
  */
 router.post("/identify", async (req, res) => {
   try {

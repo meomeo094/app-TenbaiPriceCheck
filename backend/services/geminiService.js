@@ -1,11 +1,21 @@
 /**
  * TCG card identification via Gemini (base64 image).
  * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional).
+ * SDK default is v1beta; we pass apiVersion "v1" so URLs use stable v1.
  */
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const {
+  GoogleGenerativeAI,
+  GoogleGenerativeAIFetchError,
+} = require("@google/generative-ai");
 
-/** Free-tier quota is typically roomier than 2.0 Flash; override with GEMINI_MODEL. */
+/** Exact id; override with GEMINI_MODEL if needed. */
 const FALLBACK_MODEL_ID = "gemini-1.5-flash";
+
+/** If primary id404s on v1, try this once (no v1beta override in app code). */
+const MODEL_FALLBACK_404_ID = "gemini-1.5-flash-latest";
+
+/** Stable Generative Language API version (see @google/generative-ai RequestUrl). */
+const GEMINI_REQUEST_OPTIONS = { apiVersion: "v1" };
 
 /** Log when base64 payload is large (rough token / quota pressure). */
 const LARGE_IMAGE_BASE64_CHARS = 2 * 1024 * 1024;
@@ -30,6 +40,54 @@ function isRateLimitError(err) {
   if (/429|Too Many Requests|RESOURCE_EXHAUSTED|quota/i.test(msg)) return true;
   if (o.cause) return isRateLimitError(o.cause);
   return false;
+}
+
+/**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isModelNotFoundError(err) {
+  if (err instanceof GoogleGenerativeAIFetchError && err.status === 404) return true;
+  if (err == null || typeof err !== "object") return false;
+  const o = /** @type {{ status?: number; code?: number; message?: string; cause?: unknown }} */ (err);
+  if (o.status === 404 || o.code === 404) return true;
+  const msg = String(o.message ?? err);
+  if (/404|\bnot\s+found\b|NOT_FOUND|was not found|is not found/i.test(msg)) return true;
+  if (o.cause) return isModelNotFoundError(o.cause);
+  return false;
+}
+
+/**
+ * @param {string} label
+ * @param {unknown} err
+ * @param {number} [depth]
+ */
+function logGeminiError(label, err, depth = 0) {
+  if (depth > 2) return;
+  console.error("[Gemini]", label);
+  if (err instanceof GoogleGenerativeAIFetchError) {
+    console.error("[Gemini] GoogleGenerativeAIFetchError status:", err.status, err.statusText);
+    console.error("[Gemini] GoogleGenerativeAIFetchError message:", err.message);
+    if (err.errorDetails != null) {
+      try {
+        console.error("[Gemini] errorDetails:", JSON.stringify(err.errorDetails, null, 2));
+      } catch {
+        console.error("[Gemini] errorDetails:", err.errorDetails);
+      }
+    }
+  } else if (err instanceof Error) {
+    console.error("[Gemini] Error name:", err.name);
+    console.error("[Gemini] Error message:", err.message);
+    if (err.stack) {
+      console.error("[Gemini] Stack (top):\n", err.stack.split("\n").slice(0, 14).join("\n"));
+    }
+  } else {
+    console.error("[Gemini] Non-Error value:", err);
+  }
+  if (err && typeof err === "object" && "cause" in err && err.cause != null) {
+    console.error("[Gemini] nested cause:");
+    logGeminiError("(cause)", err.cause, depth + 1);
+  }
 }
 
 /**
@@ -93,41 +151,17 @@ function parseModelJson(text) {
  * @param {string} [mimeType]
  * @returns {Promise<{ name: string | null, card_number: string | null, set_name: string | null, centering_estimate: string | null }>}
  */
-async function identifyCardFromImage(base64Image, mimeType) {
-  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-  if (!apiKey) {
-    console.error("");
-    console.error("================================================================");
-    console.error("[Gemini] ERROR: Missing GEMINI_API_KEY in backend/.env");
-    console.error("[Gemini] LOI: Thieu GEMINI_API_KEY trong backend/.env — them khoa API.");
-    console.error("        Add your API key from Google AI Studio / Cloud Console.");
-    console.error("================================================================");
-    console.error("");
-    throw new Error("GEMINI_API_KEY is not set in backend/.env");
-  }
-
-  const { data, mimeType: mime } = normalizeBase64Input(base64Image, mimeType);
-  if (!data || data.length < 32) {
-    throw new Error("identifyCardFromImage: image payload too short or invalid.");
-  }
-
-  if (data.length > LARGE_IMAGE_BASE64_CHARS) {
-    console.warn(
-      "[Gemini] Anh base64 rat lon (~" +
-        (data.length / (1024 * 1024)).toFixed(2) +
-        " MB chuoi) — de ton token, nen giam kich thuoc truoc khi gui."
-    );
-  }
-
-  const modelName = getGeminiModelId();
-  console.log("\u0110ang g\u1ecdi Gemini v\u1edbi model:", modelName);
-  console.log("[Gemini] \u0110ang ph\u00E2n t\u00EDch \u1EA3nh...");
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: SYSTEM_INSTRUCTION,
-  });
+/**
+ * @param {GoogleGenerativeAI} genAI
+ * @param {string} modelId
+ * @param {string} mime
+ * @param {string} data
+ */
+async function generateIdentifyWithModel(genAI, modelId, mime, data) {
+  const model = genAI.getGenerativeModel(
+    { model: modelId, systemInstruction: SYSTEM_INSTRUCTION },
+    GEMINI_REQUEST_OPTIONS
+  );
 
   const userPrompt =
     "Return ONLY one valid JSON object (no markdown, no extra text) with keys: name, card_number, set_name, centering_estimate. Use null for unknown values.";
@@ -135,15 +169,18 @@ async function identifyCardFromImage(base64Image, mimeType) {
   let lastErr = /** @type {unknown} */ (undefined);
   for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt++) {
     try {
-      const result = await model.generateContent([
-        { text: userPrompt },
-        {
-          inlineData: {
-            mimeType: mime,
-            data,
+      const result = await model.generateContent(
+        [
+          { text: userPrompt },
+          {
+            inlineData: {
+              mimeType: mime,
+              data,
+            },
           },
-        },
-      ]);
+        ],
+        GEMINI_REQUEST_OPTIONS
+      );
 
       const text = result.response.text();
       try {
@@ -156,7 +193,11 @@ async function identifyCardFromImage(base64Image, mimeType) {
       }
     } catch (e) {
       lastErr = e;
+      if (isModelNotFoundError(e)) {
+        throw e;
+      }
       if (!isRateLimitError(e)) {
+        logGeminiError(`generateContent failed (model=${modelId}, attempt=${attempt})`, e);
         throw e;
       }
       if (attempt === MAX_GEMINI_ATTEMPTS) {
@@ -175,6 +216,61 @@ async function identifyCardFromImage(base64Image, mimeType) {
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+async function identifyCardFromImage(base64Image, mimeType) {
+  if (!(process.env.GEMINI_API_KEY || "").trim()) {
+    console.error("");
+    console.error("================================================================");
+    console.error("[Gemini] ERROR: Missing GEMINI_API_KEY in backend/.env");
+    console.error("[Gemini] LOI: Thieu GEMINI_API_KEY trong backend/.env — them khoa API.");
+    console.error("        Add your API key from Google AI Studio / Cloud Console.");
+    console.error("================================================================");
+    console.error("");
+    throw new Error("GEMINI_API_KEY is not set in backend/.env");
+  }
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+  const { data, mimeType: mime } = normalizeBase64Input(base64Image, mimeType);
+  if (!data || data.length < 32) {
+    throw new Error("identifyCardFromImage: image payload too short or invalid.");
+  }
+
+  if (data.length > LARGE_IMAGE_BASE64_CHARS) {
+    console.warn(
+      "[Gemini] Anh base64 rat lon (~" +
+        (data.length / (1024 * 1024)).toFixed(2) +
+        " MB chuoi) — de ton token, nen giam kich thuoc truoc khi gui."
+    );
+  }
+
+  const primaryModelId = getGeminiModelId();
+  console.log("[Gemini] API requestOptions.apiVersion:", GEMINI_REQUEST_OPTIONS.apiVersion);
+  console.log("\u0110ang g\u1ecdi Gemini v\u1edbi model:", primaryModelId);
+  console.log("[Gemini] \u0110ang ph\u00E2n t\u00EDch \u1EA3nh...");
+
+  try {
+    return await generateIdentifyWithModel(genAI, primaryModelId, mime, data);
+  } catch (e) {
+    if (isModelNotFoundError(e) && primaryModelId !== MODEL_FALLBACK_404_ID) {
+      logGeminiError(
+        `Model not found for ${primaryModelId} — retrying with ${MODEL_FALLBACK_404_ID}`,
+        e
+      );
+      console.log("[Gemini] Fallback model:", MODEL_FALLBACK_404_ID);
+      try {
+        return await generateIdentifyWithModel(genAI, MODEL_FALLBACK_404_ID, mime, data);
+      } catch (e2) {
+        logGeminiError(`Fallback model ${MODEL_FALLBACK_404_ID} also failed`, e2);
+        throw e2;
+      }
+    }
+    if (isModelNotFoundError(e)) {
+      logGeminiError(`Model not found (${primaryModelId}); no alternate id to try`, e);
+    }
+    throw e;
+  }
+}
+
 async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
     throw new Error("recognizeCardFromImage: invalid imageBuffer.");
@@ -186,6 +282,8 @@ module.exports = {
   DEFAULT_MODEL,
   getGeminiModelId,
   FALLBACK_MODEL_ID,
+  MODEL_FALLBACK_404_ID,
+  GEMINI_REQUEST_OPTIONS,
   identifyCardFromImage,
   recognizeCardFromImage,
 };
