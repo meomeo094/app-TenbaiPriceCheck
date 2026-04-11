@@ -22,7 +22,10 @@ const RETRY_DELAY_MS = 5000;
 const FULL_TEXT_PROMPT =
   "B\u1ea1n l\u00e0 chuy\u00ean gia th\u1ea9m \u0111\u1ecbnh th\u1ebb b\u00e0i TCG (Pokemon, One Piece). " +
   "H\u00e3y \u0111\u1ecdc \u1ea3nh v\u00e0 tr\u1ea3 v\u1ec1 JSON g\u1ed3m: name (t\u00ean th\u1ebb), card_number (m\u00e3 s\u1ed1 v\u00ed d\u1ee5 001/100), " +
-  "set_name (t\u00ean b\u1ed9), v\u00e0 centering_estimate (\u0111\u00e1nh gi\u00e1 \u0111\u1ed9 c\u00e2n \u0111\u1ed1i vi\u1ec1n).\n\n" +
+  "set_name (t\u00ean b\u1ed9), v\u00e0 centering_estimate.\n" +
+  "Tr\u01b0\u1eddng centering_estimate PH\u1ea2I l\u00e0 m\u1ed9t c\u00e2u m\u00f4 t\u1ea3 b\u1eb1ng ti\u1ebfng Vi\u1ec7t " +
+  "(\u0111\u00e1nh gi\u00e1 \u0111\u1ed9 c\u00e2n ch\u1ec9nh vi\u1ec1n, l\u1ec7ch tr\u00e1i/ph\u1ea3i/tr\u00ean/d\u01b0\u1edbi), " +
+  "v\u00ed d\u1ee5: \"L\u1ec7ch nh\u1eb9, n\u1eb7ng ph\u1ea7n tr\u00ean v\u00e0 l\u1ec7ch ph\u1ea3i m\u1ed9t ch\u00fat\" — kh\u00f4ng d\u00f9ng ti\u1ebfng Anh.\n\n" +
   "Return ONLY one valid JSON object (no markdown, no extra text) with keys: " +
   "name, card_number, set_name, centering_estimate. Use null for unknown values.";
 
