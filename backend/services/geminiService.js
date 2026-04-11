@@ -2,6 +2,7 @@
  * TCG card identification via Gemini (base64 image).
  * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional).
  * SDK default is v1beta; we pass apiVersion "v1" so URLs use stable v1.
+ * v1 generateContent does not accept systemInstruction in the JSON body — inline it in the text prompt.
  */
 const {
   GoogleGenerativeAI,
@@ -147,31 +148,25 @@ function parseModelJson(text) {
 }
 
 /**
- * @param {string} base64Image — raw base64 or data URL
- * @param {string} [mimeType]
- * @returns {Promise<{ name: string | null, card_number: string | null, set_name: string | null, centering_estimate: string | null }>}
- */
-/**
  * @param {GoogleGenerativeAI} genAI
  * @param {string} modelId
  * @param {string} mime
  * @param {string} data
  */
 async function generateIdentifyWithModel(genAI, modelId, mime, data) {
-  const model = genAI.getGenerativeModel(
-    { model: modelId, systemInstruction: SYSTEM_INSTRUCTION },
-    GEMINI_REQUEST_OPTIONS
-  );
+  const model = genAI.getGenerativeModel({ model: modelId }, GEMINI_REQUEST_OPTIONS);
 
   const userPrompt =
     "Return ONLY one valid JSON object (no markdown, no extra text) with keys: name, card_number, set_name, centering_estimate. Use null for unknown values.";
+
+  const fullTextPrompt = SYSTEM_INSTRUCTION + "\n\n" + userPrompt;
 
   let lastErr = /** @type {unknown} */ (undefined);
   for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt++) {
     try {
       const result = await model.generateContent(
         [
-          { text: userPrompt },
+          { text: fullTextPrompt },
           {
             inlineData: {
               mimeType: mime,
