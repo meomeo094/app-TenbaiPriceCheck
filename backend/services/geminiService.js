@@ -1,8 +1,8 @@
 /**
  * TCG card identification via Gemini (base64 image).
  * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional).
- * Uses stable API v1 only (no v1beta). SDK default is v1beta if omitted; we set apiVersion "v1".
- * v1 generateContent does not accept systemInstruction in the body — inline it in the text prompt.
+ * No apiVersion override — SDK picks the default route (typically v1beta) per @google/generative-ai.
+ * Inline system-style instructions in the text prompt (avoids systemInstruction payload issues on some API versions).
  */
 const {
   GoogleGenerativeAI,
@@ -12,10 +12,8 @@ const {
 /** Default model id (trimmed; no stray spaces). Override with GEMINI_MODEL. */
 const FALLBACK_MODEL_ID = "gemini-1.5-flash";
 
-/** Second try on v1 if primary returns404 (e.g. alias availability). */
-const MODEL_FALLBACK_404_ID = "gemini-1.5-flash-latest";
-
-const GEMINI_REQUEST_OPTIONS = { apiVersion: "v1" };
+/** Optional request options; empty so the SDK does not force a specific API version. */
+const GEMINI_REQUEST_OPTIONS = {};
 
 /** Log when base64 payload is large (rough token / quota pressure). */
 const LARGE_IMAGE_BASE64_CHARS = 2 * 1024 * 1024;
@@ -238,34 +236,11 @@ async function identifyCardFromImage(base64Image, mimeType) {
   }
 
   const primaryModelId = getGeminiModelId();
-  console.log("[Gemini] API requestOptions.apiVersion:", GEMINI_REQUEST_OPTIONS.apiVersion);
+  console.log("[Gemini] requestOptions (apiVersion unset = SDK default route)");
   console.log("\u0110ang g\u1ecdi Gemini v\u1edbi model:", primaryModelId);
   console.log("[Gemini] \u0110ang ph\u00E2n t\u00EDch \u1EA3nh...");
 
-  try {
-    return await generateIdentifyWithModel(genAI, primaryModelId, mime, data);
-  } catch (e) {
-    if (!isModelNotFoundError(e)) {
-      throw e;
-    }
-
-    if (primaryModelId !== MODEL_FALLBACK_404_ID) {
-      logGeminiError(
-        `Model not found on v1 (${primaryModelId}) — retrying ${MODEL_FALLBACK_404_ID} on v1`,
-        e
-      );
-      console.error("[Gemini] Fallback model (v1):", MODEL_FALLBACK_404_ID);
-      try {
-        return await generateIdentifyWithModel(genAI, MODEL_FALLBACK_404_ID, mime, data);
-      } catch (e2) {
-        logGeminiError(`Fallback model ${MODEL_FALLBACK_404_ID} on v1 failed`, e2);
-        throw e2;
-      }
-    }
-
-    logGeminiError(`Model not found on v1 (${primaryModelId})`, e);
-    throw e;
-  }
+  return generateIdentifyWithModel(genAI, primaryModelId, mime, data);
 }
 
 async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {
@@ -279,7 +254,6 @@ module.exports = {
   DEFAULT_MODEL,
   getGeminiModelId,
   FALLBACK_MODEL_ID,
-  MODEL_FALLBACK_404_ID,
   GEMINI_REQUEST_OPTIONS,
   identifyCardFromImage,
   recognizeCardFromImage,
