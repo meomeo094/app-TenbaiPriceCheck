@@ -141,12 +141,25 @@ export interface CheckProfitResponse {
   results: CheckProfitRow[];
 }
 
+export interface TcgCenteringAxisLR {
+  left: number;
+  right: number;
+}
+
+export interface TcgCenteringAxisTB {
+  top: number;
+  bottom: number;
+}
+
 export interface TcgIdentifyResponse {
   ok: boolean;
   name?: string | null;
   card_number?: string | null;
   set_name?: string | null;
+  centering_lr?: TcgCenteringAxisLR | null;
+  centering_tb?: TcgCenteringAxisTB | null;
   centering_estimate?: string | null;
+  psa_prediction?: string | null;
   error?: string;
 }
 

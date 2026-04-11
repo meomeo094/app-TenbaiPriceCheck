@@ -8,7 +8,10 @@ interface TcgResult {
   cardName: string | null;
   productCode: string | null;
   setName: string | null;
+  centeringLr: { left: number; right: number } | null;
+  centeringTb: { top: number; bottom: number } | null;
   centering: string | null;
+  psaPrediction: string | null;
 }
 
 const COMPRESS_MAX_WIDTH = 1200;
@@ -49,6 +52,11 @@ function buildMercariUrl(q: string) {
 function buildSearchKeyword(name: string | null, code: string | null): string {
   const parts = [name?.trim(), code?.trim()].filter(Boolean) as string[];
   return parts.join(" ").trim();
+}
+
+function formatPct(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return `${Number.isInteger(rounded) ? String(Math.round(rounded)) : rounded.toFixed(1)}%`;
 }
 
 export default function TcgCheckPage() {
@@ -98,7 +106,10 @@ export default function TcgCheckPage() {
         cardName: data.name ?? null,
         productCode: data.card_number ?? null,
         setName: data.set_name ?? null,
+        centeringLr: data.centering_lr ?? null,
+        centeringTb: data.centering_tb ?? null,
         centering: data.centering_estimate ?? null,
+        psaPrediction: data.psa_prediction ?? null,
       });
     } catch (e) {
       setError(
@@ -235,7 +246,20 @@ export default function TcgCheckPage() {
               <ResultRow label="Tên thẻ" value={result.cardName} />
               <ResultRow label="Mã số thẻ" value={result.productCode} mono />
               <ResultRow label="Bộ thẻ" value={result.setName} />
-              <ResultRow label="Đánh giá căn chỉnh" value={result.centering} />
+              {result.centeringLr && (
+                <ResultRow
+                  label="Căn chỉnh L/R (Trái / Phải)"
+                  value={`${formatPct(result.centeringLr.left)} / ${formatPct(result.centeringLr.right)}`}
+                />
+              )}
+              {result.centeringTb && (
+                <ResultRow
+                  label="Căn chỉnh T/B (Trên / Dưới)"
+                  value={`${formatPct(result.centeringTb.top)} / ${formatPct(result.centeringTb.bottom)}`}
+                />
+              )}
+              <ResultRow label="Đánh giá căn chỉnh (PSA style)" value={result.centering} />
+              <ResultRow label="Dự đoán PSA (ước lượng)" value={result.psaPrediction} />
             </div>
 
             {searchQ !== "" && (
@@ -266,19 +290,6 @@ export default function TcgCheckPage() {
           </section>
         )}
 
-        {!result && (
-          <div className="rounded-2xl border border-slate-700 bg-slate-800/40 p-4 text-slate-400 text-sm">
-            <p>
-              Ảnh được nén (tối đa 1200px, JPEG 80%) rồi gửi tới{" "}
-              <code className="text-xs bg-slate-700 px-1 rounded">POST /api/tcg/identify</code>
-              {". Cần "}
-              <code className="text-violet-300 text-xs bg-slate-700 px-1 rounded">GEMINI_API_KEY</code>
-              {" trong "}
-              <code className="text-xs bg-slate-700 px-1 rounded">backend/.env</code>
-              .
-            </p>
-          </div>
-        )}
       </div>
     </main>
   );
@@ -304,3 +315,4 @@ function ResultRow({
     </div>
   );
 }
+
