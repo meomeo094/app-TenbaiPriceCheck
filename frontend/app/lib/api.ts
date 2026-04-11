@@ -141,6 +141,34 @@ export interface CheckProfitResponse {
   results: CheckProfitRow[];
 }
 
+export interface TcgIdentifyResponse {
+  ok: boolean;
+  name?: string | null;
+  card_number?: string | null;
+  set_name?: string | null;
+  centering_estimate?: string | null;
+  error?: string;
+}
+
+export async function identifyTcgCard(imageBase64: string): Promise<TcgIdentifyResponse> {
+  const response = await apiFetch("/api/tcg/identify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64 }),
+  });
+  const text = await response.text();
+  let data: TcgIdentifyResponse;
+  try {
+    data = JSON.parse(text) as TcgIdentifyResponse;
+  } catch {
+    throw new Error(`tcg/identify ${response.status}: invalid JSON`);
+  }
+  if (!response.ok) {
+    throw new Error(data.error || `tcg/identify ${response.status}: ${text.slice(0, 200)}`);
+  }
+  return data;
+}
+
 export async function checkProfit(
   inventory: InventoryRowInput[]
 ): Promise<CheckProfitResponse> {
