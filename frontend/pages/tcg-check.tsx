@@ -14,9 +14,6 @@ interface TcgResult {
 const COMPRESS_MAX_WIDTH = 1200;
 const JPEG_QUALITY = 0.8;
 
-/**
- * Gi\u1ea3m chi\u1ec1u r\u1ed9ng t\u1ed1i \u0111a 1200px + JPEG quality 0.8 (n\u00e9t, v\u1eabn nh\u1eb9).
- */
 async function compressImageFileToJpegDataUrl(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
   try {
@@ -30,9 +27,7 @@ async function compressImageFileToJpegDataUrl(file: File): Promise<string> {
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Tr\u00ecnh duy\u1ec7t kh\u00f4ng h\u1ed7 tr\u1ee3 Canvas.");
-    }
+    if (!ctx) throw new Error("Trình duyệt không hỗ trợ Canvas.");
     ctx.drawImage(bitmap, 0, 0, w, h);
     return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
   } finally {
@@ -40,9 +35,9 @@ async function compressImageFileToJpegDataUrl(file: File): Promise<string> {
   }
 }
 
-/** Snkrdunk: \u0111\u00fang c\u00f4ng th\u1ee9c keyword = name + ' ' + card_number */
+/** Snkrdunk: keywords = name + ' ' + card_number */
 function buildSnkrdunkUrl(name: string | null, cardNumber: string | null): string {
-  return `https://snkrdunk.com/search?keyword=${encodeURIComponent(
+  return `https://snkrdunk.com/search?keywords=${encodeURIComponent(
     `${name ?? ""} ${cardNumber ?? ""}`.trim()
   )}`;
 }
@@ -87,7 +82,7 @@ export default function TcgCheckPage() {
     const file =
       fileInputRef.current?.files?.[0] ?? cameraInputRef.current?.files?.[0] ?? null;
     if (!file) {
-      setError("Vui l\u00f2ng ch\u1ecdn ho\u1eb7c ch\u1ee5p \u1ea3nh th\u1ebb tr\u01b0\u1edbc.");
+      setError("Vui lòng chọn hoặc chụp ảnh thẻ trước.");
       return;
     }
     setLoading(true);
@@ -97,9 +92,8 @@ export default function TcgCheckPage() {
       const dataUrl = await compressImageFileToJpegDataUrl(file);
       const data = await identifyTcgCard(dataUrl);
       if (!data.ok) {
-        throw new Error(data.error || "Nh\u1eadn di\u1ec7n th\u1ea5t b\u1ea1i.");
+        throw new Error(data.error || "Nhận diện thất bại.");
       }
-
       setResult({
         cardName: data.name ?? null,
         productCode: data.card_number ?? null,
@@ -108,7 +102,7 @@ export default function TcgCheckPage() {
       });
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : "L\u1ed7i kh\u00f4ng x\u00e1c \u0111\u1ecbnh khi ph\u00e2n t\u00edch \u1ea3nh."
+        e instanceof Error ? e.message : "Lỗi không xác định khi phân tích ảnh."
       );
     } finally {
       setLoading(false);
@@ -132,13 +126,13 @@ export default function TcgCheckPage() {
         <Link
           href="/"
           className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-lg flex-shrink-0 border border-slate-700 active:bg-slate-700"
-          aria-label="Quay l\u1ea1i"
+          aria-label="Quay lại"
         >
           &larr;
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-white font-bold text-lg leading-tight">Ki\u1ec3m tra TCG (AI)</h1>
-          <p className="text-slate-400 text-xs">Nh\u1eadn di\u1ec7n th\u1ebb b\u00e0i \u2014 Gemini</p>
+          <h1 className="text-white font-bold text-lg leading-tight">Kiểm tra TCG (AI)</h1>
+          <p className="text-slate-400 text-xs">Nhận diện thẻ bài — Gemini</p>
         </div>
         <span className="shrink-0 rounded-xl bg-violet-900/60 border border-violet-700/50 px-3 py-1.5 text-xs font-semibold text-violet-300">
           Beta
@@ -147,9 +141,7 @@ export default function TcgCheckPage() {
 
       <div className="flex-1 overflow-y-auto px-4 pb-20 pt-5 max-w-lg mx-auto w-full space-y-6">
         <section className="space-y-3">
-          <h2 className="text-slate-200 text-sm font-semibold">
-            1. T\u1ea3i \u1ea3nh th\u1ebb b\u00e0i
-          </h2>
+          <h2 className="text-slate-200 text-sm font-semibold">1. Tải ảnh thẻ bài</h2>
 
           <div
             onDrop={handleDrop}
@@ -162,13 +154,13 @@ export default function TcgCheckPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={preview}
-                  alt="Xem tr\u01b0\u1edbc"
+                  alt="Xem trước"
                   className="max-h-52 max-w-full rounded-xl object-contain"
                 />
                 <p className="text-slate-400 text-xs truncate max-w-[240px]">{fileName}</p>
               </>
             ) : (
-              <p className="text-slate-400 text-sm">Ch\u1ea1m \u0111\u1ec3 ch\u1ecdn \u1ea3nh</p>
+              <p className="text-slate-400 text-sm">Chạm để chọn ảnh</p>
             )}
             <input
               ref={fileInputRef}
@@ -185,7 +177,7 @@ export default function TcgCheckPage() {
               onClick={() => cameraInputRef.current?.click()}
               className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3.5 rounded-xl"
             >
-              M\u00e1y \u1ea3nh
+              Máy ảnh
             </button>
             <button
               type="button"
@@ -213,7 +205,7 @@ export default function TcgCheckPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-slate-200 text-sm font-semibold">2. Nh\u1eadn di\u1ec7n AI</h2>
+          <h2 className="text-slate-200 text-sm font-semibold">2. Nhận diện AI</h2>
           <div className="flex gap-3">
             <button
               type="button"
@@ -221,7 +213,7 @@ export default function TcgCheckPage() {
               disabled={loading || !preview}
               className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-xl text-base shadow-lg shadow-violet-900/30"
             >
-              {loading ? "\u0110ang ph\u00e2n t\u00edch..." : "Qu\u00e9t th\u1ebb"}
+              {loading ? "Đang phân tích..." : "Quét thẻ"}
             </button>
             {preview && (
               <button
@@ -229,7 +221,7 @@ export default function TcgCheckPage() {
                 onClick={handleReset}
                 className="px-4 py-4 bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium rounded-xl text-sm"
               >
-                X\u00f3a \u1ea3nh
+                Xóa ảnh
               </button>
             )}
           </div>
@@ -237,19 +229,19 @@ export default function TcgCheckPage() {
 
         {result && (
           <section className="space-y-4">
-            <h2 className="text-slate-200 text-sm font-semibold">3. K\u1ebft qu\u1ea3</h2>
+            <h2 className="text-slate-200 text-sm font-semibold">3. Kết quả</h2>
 
             <div className="rounded-2xl border border-violet-700/40 bg-violet-950/30 p-4 space-y-3">
-              <ResultRow label="T\u00ean th\u1ebb" value={result.cardName} />
-              <ResultRow label="M\u00e3 s\u1ed1 th\u1ebb" value={result.productCode} mono />
-              <ResultRow label="B\u1ed9 th\u1ebb" value={result.setName} />
-              <ResultRow label="\u0110\u00e1nh gi\u00e1 c\u0103n ch\u1ec9nh" value={result.centering} />
+              <ResultRow label="Tên thẻ" value={result.cardName} />
+              <ResultRow label="Mã số thẻ" value={result.productCode} mono />
+              <ResultRow label="Bộ thẻ" value={result.setName} />
+              <ResultRow label="Đánh giá căn chỉnh" value={result.centering} />
             </div>
 
             {searchQ !== "" && (
               <div className="space-y-2">
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-wide">
-                  Tra c\u1ee9u gi\u00e1 th\u1ef1c t\u1ebf
+                  Tra cứu giá thực tế
                 </p>
                 <div className="flex flex-col gap-2">
                   <a
@@ -258,7 +250,7 @@ export default function TcgCheckPage() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-semibold py-3 px-4 rounded-xl text-sm"
                   >
-                    Tra c\u1ee9u gi\u00e1 SNKRDUNK
+                    Tra cứu giá SNKRDUNK
                   </a>
                   <a
                     href={buildMercariUrl(searchQ)}
@@ -266,7 +258,7 @@ export default function TcgCheckPage() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-4 rounded-xl text-sm"
                   >
-                    Tra c\u1ee9u gi\u00e1 Mercari
+                    Tra cứu giá Mercari
                   </a>
                 </div>
               </div>
@@ -277,11 +269,9 @@ export default function TcgCheckPage() {
         {!result && (
           <div className="rounded-2xl border border-slate-700 bg-slate-800/40 p-4 text-slate-400 text-sm">
             <p>
-              {
-                "\u1ea2nh \u0111\u01b0\u1ee3c n\u00e9n (t\u1ed1i \u0111a 1200px, JPEG 80%) r\u1ed3i g\u1eedi t\u1edbi "
-              }
+              Ảnh được nén (tối đa 1200px, JPEG 80%) rồi gửi tới{" "}
               <code className="text-xs bg-slate-700 px-1 rounded">POST /api/tcg/identify</code>
-              {". C\u1ea7n "}
+              {". Cần "}
               <code className="text-violet-300 text-xs bg-slate-700 px-1 rounded">GEMINI_API_KEY</code>
               {" trong "}
               <code className="text-xs bg-slate-700 px-1 rounded">backend/.env</code>
@@ -309,7 +299,7 @@ function ResultRow({
       <p
         className={`text-white text-sm font-medium break-all ${mono ? "font-mono text-violet-300" : ""}`}
       >
-        {value ?? "\u2014"}
+        {value ?? "—"}
       </p>
     </div>
   );
