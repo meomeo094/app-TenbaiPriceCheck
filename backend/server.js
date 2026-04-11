@@ -14,6 +14,7 @@ const { scrapeMoriMori } = require("./scrapers/morimori");
 const testRoutes = require("./routes/test");
 const checkProfitRoutes = require("./routes/checkProfit");
 const inventoryRoutes = require("./routes/inventory");
+const { DEFAULT_MODEL: GEMINI_TCG_MODEL } = require("./services/geminiService");
 
 // Stealth Plugin — BẮT BUỘC để qua Cloudflare/anti-bot
 chromium.use(StealthPlugin());
@@ -40,6 +41,17 @@ app.use("/api/check-profit", checkProfitRoutes);
 /** Kho hàng — cùng router, hai path (frontend dùng /api/my-inventory) */
 app.use("/api/my-inventory", inventoryRoutes);
 app.use("/api/inventory", inventoryRoutes);
+
+// TCG AI — Gemini 1.5 Flash stub (see services/geminiService.js)
+app.get("/api/tcg/gemini", (_req, res) => {
+  res.json({
+    ok: true,
+    stub: true,
+    model: GEMINI_TCG_MODEL,
+    message:
+      "Gemini TCG stub is loaded. Set GEMINI_API_KEY and implement recognizeCardFromImage().",
+  });
+});
 
 // Lưu browser instances để cleanup
 const activeBrowsers = new Map();
@@ -217,6 +229,9 @@ app.listen(PORT, () => {
   console.log(`💹 Check profit: POST http://localhost:${PORT}/api/check-profit`);
   console.log(
     `📦 Inventory: GET|PUT http://localhost:${PORT}/api/my-inventory (alias: /api/inventory)`
+  );
+  console.log(
+    "TCG Gemini stub: GET http://localhost:" + PORT + "/api/tcg/gemini (model: " + GEMINI_TCG_MODEL + ")"
   );
   console.log(`🎭 Playwright Stealth: ĐÃ BẬT\n`);
 });

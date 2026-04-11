@@ -95,10 +95,34 @@ async function syncMyInventoryToSupabase(rows) {
 
   const supabase = getSupabaseInventoryWriter();
   if (!supabase) {
-    console.warn(
-      "[Supabase] Bỏ qua ghi DB: cần SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trong backend/.env"
+    const urlSet = Boolean((process.env.SUPABASE_URL || "").trim());
+    const keySet = Boolean((process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim());
+    console.error("");
+    console.error("================================================================");
+    console.error("SUPABASE: CANNOT WRITE my_inventory — MISSING .env CONFIG");
+    console.error("================================================================");
+    if (!urlSet) {
+      console.error("  >> MISSING: SUPABASE_URL (Dashboard → Settings → API → Project URL)");
+    } else {
+      console.error("  OK: SUPABASE_URL is set");
+    }
+    if (!keySet) {
+      console.error(
+        "  >> MISSING: SUPABASE_SERVICE_ROLE_KEY (service_role secret — NOT anon key)"
+      );
+    } else {
+      console.error("  OK: SUPABASE_SERVICE_ROLE_KEY is set");
+    }
+    console.error("  Copy backend/env.example → backend/.env and set both variables.");
+    console.error("================================================================");
+    console.error("");
+    const configError = Object.assign(
+      new Error(
+        "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — cannot upsert my_inventory."
+      ),
+      { code: "SUPABASE_CONFIG_MISSING" }
     );
-    return { ok: true, skipped: true, errors: [] };
+    return { ok: false, errors: [{ operation: "supabase_config", error: configError }] };
   }
 
   const payload = rows.map((r) => ({

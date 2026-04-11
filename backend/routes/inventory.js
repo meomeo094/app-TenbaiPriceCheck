@@ -78,46 +78,59 @@ router.put("/", async (req, res) => {
 
   writeFile(out);
 
+  let syncResult;
   try {
-    const syncResult = await syncMyInventoryToSupabase(out);
+    syncResult = await syncMyInventoryToSupabase(out);
+  } catch (e) {
+    console.error("[inventory] Exception when calling syncMyInventoryToSupabase:", e?.message);
+    console.error(e?.stack);
+    if (e && typeof e === "object") {
+      console.error("[inventory] Exception (JSON):", JSON.stringify(e, Object.getOwnPropertyNames(e)));
+    }
+    return res.status(503).json({
+      ok: false,
+      error: "Unexpected error while syncing to Supabase.",
+      details: e?.message ?? String(e),
+      inventory: out,
+    });
+  }
 
-    if (syncResult.skipped) {
-      console.log(
-        "[inventory] Supabase: bỏ qua đồng bộ (thiếu SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY trong .env)."
-      );
-    } else if (syncResult.ok) {
-      console.log("[inventory] Thành công: đã đồng bộ dữ liệu lên Supabase (bảng my_inventory, cột name / jan_code / purchase_price).");
-    } else if (!syncResult.ok) {
-      console.log(
-        "[inventory] Đồng bộ Supabase không thành công — chi tiết từng lỗi đã in ở block [Supabase] phía trên."
-      );
-      console.log(
-        "[inventory] Số lỗi:",
-        syncResult.errors?.length ?? 0,
-        "| Tóm tắt (operation + message):"
-      );
-      for (const item of syncResult.errors ?? []) {
-        const err = item.error;
-        console.error("Lỗi insert Supabase:", err);
-        const msg = err && typeof err === "object" && "message" in err ? err.message : String(err);
-        console.log("  -", item.operation, "→", msg);
-        if (err && typeof err === "object") {
-          console.log(
-            "[inventory] full error object:",
-            JSON.stringify(err, Object.getOwnPropertyNames(err))
-          );
-        } else {
-          console.log("[inventory] full error:", err);
-        }
+  if (!syncResult.ok) {
+    console.error(
+      "[inventory] INSERT/UPSERT Supabase FAILED — error count:",
+      syncResult.errors?.length ?? 0
+    );
+    for (const item of syncResult.errors ?? []) {
+      const err = item.error;
+      console.error("[inventory] operation:", item.operation, "| Supabase error:", err);
+      const msg = err && typeof err === "object" && "message" in err ? err.message : String(err);
+      console.error("  ->", msg);
+      if (err && typeof err === "object") {
+        console.error(
+          "[inventory] full error:",
+          JSON.stringify(err, Object.getOwnPropertyNames(err))
+        );
       }
     }
-  } catch (e) {
-    console.log("[inventory] Exception khi gọi syncMyInventoryToSupabase:", e?.message);
-    console.log(e?.stack);
-    if (e && typeof e === "object") {
-      console.log("[inventory] Exception (JSON):", JSON.stringify(e, Object.getOwnPropertyNames(e)));
-    }
+    const summary =
+      (syncResult.errors ?? [])
+        .map((item) => {
+          const err = item.error;
+          const msg = err && typeof err === "object" && "message" in err ? err.message : String(err);
+          return item.operation + ": " + msg;
+        })
+        .join(" | ") || "Unknown Supabase error.";
+    return res.status(503).json({
+      ok: false,
+      error: "Failed to sync inventory to Supabase (my_inventory).",
+      details: summary,
+      inventory: out,
+    });
   }
+
+  console.log(
+    "[inventory] OK: upserted to Supabase — table my_inventory (name, jan_code, purchase_price)."
+  );
 
   res.json({ ok: true, inventory: out });
 });
