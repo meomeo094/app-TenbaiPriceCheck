@@ -1,7 +1,7 @@
 const express = require("express");
 const {
   identifyCardFromImage,
-  getGeminiModelId,
+  DEFAULT_MODEL,
 } = require("../services/geminiService");
 
 const router = express.Router();
@@ -11,7 +11,7 @@ router.get("/gemini", (_req, res) => {
   const hasKey = Boolean((process.env.GEMINI_API_KEY || "").trim());
   res.json({
     ok: true,
-    model: getGeminiModelId(),
+    model: DEFAULT_MODEL,
     configured: hasKey,
     message: hasKey
       ? "POST /api/tcg/identify — gửi { imageBase64, mimeType? }"
