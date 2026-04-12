@@ -1,11 +1,11 @@
 {
-  "name": "PriceCheck - Kiểm tra giá thu mua",
-  "short_name": "PriceCheck",
-  "description": "Quét mã JAN để kiểm tra giá thu mua tại Nhật Bản",
+  "name": "KACHI TCG",
+  "short_name": "KACHI TCG",
+  "description": "Check giá, AI nhận diện thẻ TCG và quản lý kho",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#6366f1",
+  "background_color": "#0B0E14",
+  "theme_color": "#0B0E14",
   "orientation": "portrait",
   "icons": [
     {

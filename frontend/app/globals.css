@@ -3,14 +3,67 @@
 :root {
   --safe-area-inset-top: env(safe-area-inset-top);
   --safe-area-inset-bottom: env(safe-area-inset-bottom);
+  --color-bg: #0B0E14;
+  --color-surface: #131720;
+  --color-surface-raised: #1A1F2E;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-primary: #7B61FF;
+  --color-primary-glow: rgba(123, 97, 255, 0.35);
+  --color-success: #00D084;
+  --color-success-glow: rgba(0, 208, 132, 0.3);
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-body {
+html, body {
+  background-color: var(--color-bg);
   overscroll-behavior: none;
+}
+
+/* Glow pulse animation for main scan button */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px var(--color-primary-glow), 0 0 40px var(--color-primary-glow); }
+  50% { box-shadow: 0 0 30px var(--color-primary-glow), 0 0 60px rgba(123, 97, 255, 0.2); }
+}
+
+@keyframes green-glow-pulse {
+  0%, 100% { box-shadow: 0 0 15px var(--color-success-glow); }
+  50% { box-shadow: 0 0 25px rgba(0, 208, 132, 0.5); }
+}
+
+.btn-primary-glow {
+  animation: glow-pulse 2.5s ease-in-out infinite;
+}
+
+.btn-success-glow {
+  animation: green-glow-pulse 2.5s ease-in-out infinite;
+}
+
+/* Header — logo SVG vector, không khung, không PNG checkerboard */
+.kachi-header-brand {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Glow neon cyan (#00EAFF) — sắc nét trên nền #0B0E14 */
+.kachi-brand-neon {
+  filter: drop-shadow(0 0 3px rgba(0, 234, 255, 0.95))
+    drop-shadow(0 0 8px rgba(0, 234, 255, 0.55))
+    drop-shadow(0 0 18px rgba(0, 234, 255, 0.28));
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* html5-qrcode video styling */
@@ -26,4 +79,17 @@ body {
 
 #qr-reader__dashboard {
   display: none !important;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
 }

@@ -5,13 +5,13 @@ import "./globals.css";
 const geist = Geist({ subsets: ["latin", "latin-ext"] });
 
 export const metadata: Metadata = {
-  title: "PriceCheck - Kiểm tra giá thu mua",
-  description: "Quét mã JAN để kiểm tra giá thu mua tại 3 trang web Nhật Bản",
+  title: "KACHI TCG — Check Giá & AI Scanner",
+  description: "Định giá thẻ bài chính xác, kiểm tra giá thu mua và quản lý kho hàng",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "PriceCheck",
+    title: "KACHI TCG",
   },
   icons: {
     apple: "/icons/apple-touch-icon.png",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6366f1",
+  themeColor: "#0B0E14",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -38,7 +38,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>
-      <body className={`${geist.className} bg-slate-900 text-white min-h-screen`}>
+      <body className={`${geist.className} text-white min-h-screen`} style={{ backgroundColor: "#0B0E14" }}>
         {children}
       </body>
     </html>

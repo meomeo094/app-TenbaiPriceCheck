@@ -163,8 +163,9 @@ export interface TcgIdentifyResponse {
   error?: string;
 }
 
+/** POST /api/tcg/gemini — Gemini phân tích ảnh thẻ (proxy → backend NEXT_PUBLIC_API_URL). */
 export async function identifyTcgCard(imageBase64: string): Promise<TcgIdentifyResponse> {
-  const response = await apiFetch("/api/tcg/identify", {
+  const response = await apiFetch("/api/tcg/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ imageBase64 }),
@@ -174,10 +175,10 @@ export async function identifyTcgCard(imageBase64: string): Promise<TcgIdentifyR
   try {
     data = JSON.parse(text) as TcgIdentifyResponse;
   } catch {
-    throw new Error(`tcg/identify ${response.status}: invalid JSON`);
+    throw new Error(`tcg/gemini ${response.status}: invalid JSON`);
   }
   if (!response.ok) {
-    throw new Error(data.error || `tcg/identify ${response.status}: ${text.slice(0, 200)}`);
+    throw new Error(data.error || `tcg/gemini ${response.status}: ${text.slice(0, 200)}`);
   }
   return data;
 }
@@ -202,7 +203,7 @@ export async function checkProfit(
  * Backend  server.js     : app.get("/api/check", ...)
  * Proxy    route.ts      : backendOrigin() + "/api/check" + search
  * Frontend api.ts        : "/api/check?jan=..."
- * Top      route.ts      : backendOrigin() + "/api/top-searches"
+ * TCG Gemini: POST backend /api/tcg/gemini — proxy app/api/tcg/gemini/route.ts
  *
  * Test nhanh từ DevTools:
  *   fetch("/api/check?jan=4902370553024").then(r=>r.json()).then(console.log)
