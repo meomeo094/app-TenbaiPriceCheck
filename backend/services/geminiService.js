@@ -4,6 +4,8 @@
  * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional; default gemini-2.5-flash).
  * Do not pass apiVersion — let @google/generative-ai choose the default route.
  */
+const fs = require("fs");
+const path = require("path");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
@@ -15,32 +17,11 @@ function getGeminiModelId() {
   const fromEnv = (process.env.GEMINI_MODEL || "").trim().replace(/\s+/g, "");
   return fromEnv || DEFAULT_GEMINI_MODEL;
 }
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 5000;
 
-/** System + user instructions in one text block (no separate systemInstruction). */
-const FULL_TEXT_PROMPT =
-  "B\u1ea1n l\u00e0 chuy\u00ean gia th\u1ea9m \u0111\u1ecbnh th\u1ebb b\u00e0i TCG (Pokemon, One Piece). " +
-  "H\u00e3y \u0111\u1ecdc \u1ea3nh v\u00e0 tr\u1ea3 v\u1ec1 JSON g\u1ed3m: name (t\u00ean th\u1ebb), card_number (m\u00e3 s\u1ed1 v\u00ed d\u1ee5 001/100), " +
-  "set_name (t\u00ean b\u1ed9), v\u00e0 centering_estimate.\n" +
-  "Tr\u01b0\u1eddng centering_estimate PH\u1ea2I l\u00e0 m\u1ed9t c\u00e2u m\u00f4 t\u1ea3 b\u1eb1ng ti\u1ebfng Vi\u1ec7t " +
-  "(\u0111\u00e1nh gi\u00e1 \u0111\u1ed9 c\u00e2n ch\u1ec9nh vi\u1ec1n, l\u1ec7ch tr\u00e1i/ph\u1ea3i/tr\u00ean/d\u01b0\u1edbi), " +
-  "v\u00ed d\u1ee5: \"L\u1ec7ch nh\u1eb9, n\u1eb7ng ph\u1ea7n tr\u00ean v\u00e0 l\u1ec7ch ph\u1ea3i m\u1ed9t ch\u00fat\" — kh\u00f4ng d\u00f9ng ti\u1ebfng Anh.\n\n" +
-  "Return ONLY one valid JSON object (no markdown, no extra text) with keys: " +
-  "name, card_number, set_name, centering_estimate. Use null for unknown values.";
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * @param {unknown} err
- * @returns {boolean}
- */
-function isRateLimitError(err) {
-  if (!err || typeof err !== "object") return false;
-  const o = /** @type {any} */ (err);
-  if (o.status === 429 || o.code === 429) return true;
-  if (/429|Too Many Requests|RESOURCE_EXHAUSTED|quota/i.test(String(o.message ?? ""))) return true;
-  return o.cause ? isRateLimitError(o.cause) : false;
+/** Vietnamese prompt with diacritics; loaded from UTF-8 file (no \\u escapes in model text). */
+function loadIdentifyPrompt() {
+  const p = path.join(__dirname, "tcgIdentifyPrompt.vi.txt");
+  return fs.readFileSync(p, "utf8").trim();
 }
 
 /**
@@ -65,17 +46,71 @@ function parseBase64Input(base64Image, mimeTypeHint) {
   };
 }
 
+/** @param {unknown} n */
+function toFiniteNumber(n) {
+  if (typeof n === "number" && Number.isFinite(n)) return n;
+  if (typeof n === "string" && n.trim() !== "") {
+    const x = parseFloat(n.replace(",", "."));
+    return Number.isFinite(x) ? x : null;
+  }
+  return null;
+}
+
+/** @param {string} s */
+function parseSlashPair(s) {
+  const m = String(s).trim().match(/^(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const a = parseFloat(m[1].replace(",", "."));
+  const b = parseFloat(m[2].replace(",", "."));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { a, b };
+}
+
+/**
+ * @param {unknown} raw
+ * @param {'lr'|'tb'} kind
+ * @returns {{ left?: number; right?: number; top?: number; bottom?: number } | null}
+ */
+function normalizeCenteringAxis(raw, kind) {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    const p = parseSlashPair(raw);
+    if (!p) return null;
+    if (kind === "lr") return { left: p.a, right: p.b };
+    return { top: p.a, bottom: p.b };
+  }
+  if (typeof raw !== "object") return null;
+  const o = /** @type {Record<string, unknown>} */ (raw);
+  if (kind === "lr") {
+    const left = toFiniteNumber(o.left ?? o.Left ?? o.trai);
+    const right = toFiniteNumber(o.right ?? o.Right ?? o.phai);
+    if (left == null || right == null) return null;
+    return { left, right };
+  }
+  const top = toFiniteNumber(o.top ?? o.Top ?? o.tren);
+  const bottom = toFiniteNumber(o.bottom ?? o.Bottom ?? o.duoi);
+  if (top == null || bottom == null) return null;
+  return { top, bottom };
+}
+
 /** @param {string} text */
 function parseJsonResponse(text) {
   let s = text.trim();
   const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) s = fence[1].trim();
   const obj = JSON.parse(s);
+
+  const lr = normalizeCenteringAxis(obj.centering_lr, "lr");
+  const tb = normalizeCenteringAxis(obj.centering_tb, "tb");
+
   return {
     name: obj.name != null ? String(obj.name) : null,
     card_number: obj.card_number != null ? String(obj.card_number) : null,
     set_name: obj.set_name != null ? String(obj.set_name) : null,
+    centering_lr: lr,
+    centering_tb: tb,
     centering_estimate: obj.centering_estimate != null ? String(obj.centering_estimate) : null,
+    psa_prediction: obj.psa_prediction != null ? String(obj.psa_prediction) : null,
   };
 }
 
@@ -106,35 +141,17 @@ async function identifyCardFromImage(base64Image, mimeType) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: modelId });
 
-  let lastErr;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      const result = await model.generateContent([
-        { text: FULL_TEXT_PROMPT },
-        { inlineData: { mimeType: mime, data } },
-      ]);
-      const raw = result.response.text();
-      try {
-        return parseJsonResponse(raw);
-      } catch {
-        console.error("[Gemini] Invalid JSON from model:", raw.slice(0, 500));
-        throw new Error("Gemini response was not valid JSON.");
-      }
-    } catch (err) {
-      lastErr = err;
-      if (!isRateLimitError(err)) {
-        console.error("[Gemini] Error:", err instanceof Error ? err.message : err);
-        throw err;
-      }
-      if (attempt === MAX_ATTEMPTS) {
-        throw new Error("GEMINI_RATE_LIMIT_EXHAUSTED");
-      }
-      console.log("[Gemini] Rate limit — waiting 5s, retry " + attempt + "/" + MAX_ATTEMPTS);
-      await sleep(RETRY_DELAY_MS);
-    }
+  const result = await model.generateContent([
+    { text: loadIdentifyPrompt() },
+    { inlineData: { mimeType: mime, data } },
+  ]);
+  const raw = result.response.text();
+  try {
+    return parseJsonResponse(raw);
+  } catch {
+    console.error("[Gemini] Invalid JSON from model:", raw.slice(0, 500));
+    throw new Error("Gemini response was not valid JSON.");
   }
-
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 async function recognizeCardFromImage(imageBuffer, mimeType = "image/jpeg") {

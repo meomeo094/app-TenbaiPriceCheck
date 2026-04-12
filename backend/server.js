@@ -44,7 +44,7 @@ app.use("/api/check-profit", checkProfitRoutes);
 app.use("/api/my-inventory", inventoryRoutes);
 app.use("/api/inventory", inventoryRoutes);
 
-/** TCG — POST /api/tcg/identify, GET /api/tcg/gemini */
+/** TCG — GET /api/tcg/gemini, POST /api/tcg/gemini | POST /api/tcg/identify */
 app.use("/api/tcg", tcgRouter);
 
 // Lưu browser instances để cleanup
