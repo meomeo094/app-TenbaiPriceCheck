@@ -105,6 +105,7 @@ const SITE_COLORS: Record<string, string> = {
   "1-chome": "from-sky-500/10 to-cyan-500/5 border-sky-500/20",
   Homura: "from-orange-500/10 to-amber-500/5 border-orange-500/20",
   MoriMori: "from-emerald-500/10 to-teal-500/5 border-emerald-500/20",
+  Toban: "from-rose-500/10 to-pink-500/5 border-rose-500/20",
 };
 
 const SITE_DOT: Record<string, string> = {
@@ -112,6 +113,7 @@ const SITE_DOT: Record<string, string> = {
   "1-chome": "bg-sky-400",
   Homura: "bg-orange-400",
   MoriMori: "bg-emerald-400",
+  Toban: "bg-rose-400",
 };
 
 // ─── TAB 1: Market Check ────────────────────────────────────────────────────
