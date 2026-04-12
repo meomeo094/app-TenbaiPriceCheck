@@ -11,6 +11,7 @@ const { scrapeGameKaitori } = require("./scrapers/gamekaitori");
 const { scrapeIchome } = require("./scrapers/ichome");
 const { scrapeHomura } = require("./scrapers/homura");
 const { scrapeMoriMori } = require("./scrapers/morimori");
+const { scrapeTobanSyoji } = require("./scrapers/tobansyoji");
 const testRoutes = require("./routes/test");
 const checkProfitRoutes = require("./routes/checkProfit");
 const inventoryRoutes = require("./routes/inventory");
@@ -139,23 +140,25 @@ app.get("/api/check", async (req, res) => {
       viewport: { width: 390, height: 844 },
     });
 
-    const [page1, page2, page3, page4] = await Promise.all([
+    const [page1, page2, page3, page4, page5] = await Promise.all([
+      context.newPage(),
       context.newPage(),
       context.newPage(),
       context.newPage(),
       context.newPage(),
     ]);
 
-    console.log("  → Đang cào song song 4 trang...");
+    console.log("  → Đang cào song song 5 trang...");
 
-    const [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult] = await Promise.all([
+    const [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult, tobanResult] = await Promise.all([
       scrapeGameKaitori(page1, janCode),
       scrapeIchome(page2, janCode),
       scrapeHomura(page3, janCode),
       scrapeMoriMori(page4, janCode),
+      scrapeTobanSyoji(page5, janCode),
     ]);
 
-    const results = [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult];
+    const results = [gameKaitoriResult, ichomeResult, homuraResult, morimoriResult, tobanResult];
     results.forEach((r) => {
       console.log(`  [${r.site}] ${r.status} → ${r.price ? "¥" + parseInt(r.price).toLocaleString() : "N/A"}`);
     });
